@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: setlyx-db
+    environment:
+      POSTGRES_USER: setlyx
+      POSTGRES_PASSWORD: setlyx
+      POSTGRES_DB: setlyx
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: ./apps/api
+    container_name: setlyx-api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+    depends_on:
+      - db
+
+  web:
+    build: ./apps/web
+    container_name: setlyx-web
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
