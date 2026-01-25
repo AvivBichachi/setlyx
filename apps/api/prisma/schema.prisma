@@ -23,7 +23,7 @@ CUSTOM
 model Program {
   id        Int          @id @default(autoincrement())
   name      String
-  type      String
+  type      ProgramType
   isActive  Boolean      @default(false)
   days      ProgramDay[]
   createdAt DateTime     @default(now())
