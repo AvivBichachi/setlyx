@@ -23,10 +23,11 @@ CUSTOM
 model Program {
   id        Int          @id @default(autoincrement())
   name      String
-  type      String
+  type      ProgramType
   isActive  Boolean      @default(false)
   days      ProgramDay[]
   createdAt DateTime     @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ProgramDay {
@@ -36,6 +37,9 @@ model ProgramDay {
   program   Program       @relation(fields: [programId], references: [id])
   programId Int
   exercises DayExercise[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([programId, order])
 }
 
 model Exercise {
