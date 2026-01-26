@@ -13,7 +13,7 @@ import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 
 @Controller('workouts/sessions')
 export class WorkoutsController {
-  constructor(private readonly workoutsService: WorkoutsService) {}
+  constructor(private readonly workoutsService: WorkoutsService) { }
 
   @Post('start')
   start(@Body() dto: StartWorkoutSessionDto) {
@@ -23,6 +23,13 @@ export class WorkoutsController {
   @Get(':sessionId')
   getSession(@Param('sessionId', ParseIntPipe) sessionId: number) {
     return this.workoutsService.getSession(sessionId);
+  }
+
+  @Get('sessions/:sessionId')
+  findOneDetailed(
+    @Param('sessionId', ParseIntPipe) sessionId: number,
+  ) {
+    return this.workoutsService.findOneDetailed(sessionId);
   }
 
   @Post(':sessionId/sets')

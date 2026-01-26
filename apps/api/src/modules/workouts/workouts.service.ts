@@ -10,7 +10,7 @@ import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 
 @Injectable()
 export class WorkoutsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async ensureProgramDayOwnership(programId: number, programDayId: number) {
     const day = await this.prisma.programDay.findFirst({
@@ -95,5 +95,28 @@ export class WorkoutsService {
       where: { id: sessionId },
       data: { endedAt: new Date() },
     });
+  }
+
+  async findOneDetailed(sessionId: number) {
+    const session = await this.prisma.workoutSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        program: { select: { id: true, name: true, type: true } },
+        programDay: { select: { id: true, name: true, order: true } },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Workout session not found');
+    }
+
+    return {
+      id: session.id,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      program: session.program,
+      programDay: session.programDay,
+      // exercises: ... (כשתוסיף את ה-read model המלא של planned vs performed)
+    };
   }
 }
