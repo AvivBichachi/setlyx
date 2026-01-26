@@ -49,4 +49,26 @@ export class ProgramsService {
       throw e;
     }
   }
+
+  async findOneDetailed(id: number) {
+  const program = await this.prisma.program.findUnique({
+    where: { id },
+    include: {
+      days: {
+        orderBy: { order: 'asc' },
+        include: {
+          exercises: {
+            orderBy: { order: 'asc' },
+            include: {
+              exercise: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!program) throw new NotFoundException('Program not found');
+  return program;
+}
 }

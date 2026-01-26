@@ -14,7 +14,7 @@ import { UpdateProgramDto } from './dto/update-program.dto';
 
 @Controller('programs')
 export class ProgramsController {
-  constructor(private readonly programsService: ProgramsService) {}
+  constructor(private readonly programsService: ProgramsService) { }
 
   @Post()
   create(@Body() dto: CreateProgramDto) {
@@ -29,6 +29,11 @@ export class ProgramsController {
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.programsService.findOne(id);
+  }
+
+  @Get(':id/detailed')
+  findOneDetailed(@Param('id', ParseIntPipe) id: number) {
+    return this.programsService.findOneDetailed(id);
   }
 
   @Patch(':id')
