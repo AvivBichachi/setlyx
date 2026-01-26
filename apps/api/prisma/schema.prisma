@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,50 +7,52 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum ProgramType {
-AB
-PPL
-FULL_BODY
-CUSTOM
-}
-
 model Program {
   id        Int          @id @default(autoincrement())
   name      String
-  type      ProgramType
   isActive  Boolean      @default(false)
-  days      ProgramDay[]
   createdAt DateTime     @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime     @updatedAt
+  type      ProgramType
+  days      ProgramDay[]
 }
 
 model ProgramDay {
   id        Int           @id @default(autoincrement())
   name      String
   order     Int
-  program   Program       @relation(fields: [programId], references: [id])
   programId Int
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
   exercises DayExercise[]
-  createdAt DateTime     @default(now())
-  updatedAt DateTime @updatedAt
+  program   Program       @relation(fields: [programId], references: [id])
+
   @@unique([programId, order])
 }
 
 model Exercise {
   id        Int           @id @default(autoincrement())
-  name      String
+  name      String        @unique
   exercises DayExercise[]
 }
 
 model DayExercise {
   id           Int        @id @default(autoincrement())
-  programDay   ProgramDay @relation(fields: [programDayId], references: [id])
   programDayId Int
-  exercise     Exercise   @relation(fields: [exerciseId], references: [id])
   exerciseId   Int
   order        Int
   targetSets   Int
   minReps      Int
   maxReps      Int
+  exercise     Exercise   @relation(fields: [exerciseId], references: [id])
+  programDay   ProgramDay @relation(fields: [programDayId], references: [id])
+
   @@unique([programDayId, order])
+}
+
+enum ProgramType {
+  AB
+  PPL
+  FULL_BODY
+  CUSTOM
 }
