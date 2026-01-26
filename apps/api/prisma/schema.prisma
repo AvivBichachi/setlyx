@@ -8,24 +8,26 @@ datasource db {
 }
 
 model Program {
-  id        Int          @id @default(autoincrement())
-  name      String
-  isActive  Boolean      @default(false)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  type      ProgramType
-  days      ProgramDay[]
+  id              Int              @id @default(autoincrement())
+  name            String
+  isActive        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  type            ProgramType
+  days            ProgramDay[]
+  workoutSessions WorkoutSession[]
 }
 
 model ProgramDay {
-  id        Int           @id @default(autoincrement())
-  name      String
-  order     Int
-  programId Int
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  exercises DayExercise[]
-  program   Program       @relation(fields: [programId], references: [id])
+  id              Int              @id @default(autoincrement())
+  name            String
+  order           Int
+  programId       Int
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  exercises       DayExercise[]
+  program         Program          @relation(fields: [programId], references: [id])
+  workoutSessions WorkoutSession[]
 
   @@unique([programId, order])
 }
@@ -37,15 +39,16 @@ model Exercise {
 }
 
 model DayExercise {
-  id           Int        @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   programDayId Int
   exerciseId   Int
   order        Int
   targetSets   Int
   minReps      Int
   maxReps      Int
-  exercise     Exercise   @relation(fields: [exerciseId], references: [id])
-  programDay   ProgramDay @relation(fields: [programDayId], references: [id])
+  exercise     Exercise     @relation(fields: [exerciseId], references: [id])
+  programDay   ProgramDay   @relation(fields: [programDayId], references: [id])
+  workoutSets  WorkoutSet[]
 
   @@unique([programDayId, order])
 }
@@ -55,4 +58,38 @@ enum ProgramType {
   PPL
   FULL_BODY
   CUSTOM
+}
+
+model WorkoutSession {
+  id           Int        @id @default(autoincrement())
+  program      Program    @relation(fields: [programId], references: [id])
+  programId    Int
+  programDay   ProgramDay @relation(fields: [programDayId], references: [id])
+  programDayId Int
+
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  sets WorkoutSet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkoutSet {
+  id        Int            @id @default(autoincrement())
+  session   WorkoutSession @relation(fields: [sessionId], references: [id])
+  sessionId Int
+
+  dayExercise   DayExercise @relation(fields: [dayExerciseId], references: [id])
+  dayExerciseId Int
+
+  setNumber Int
+  reps      Int
+  weight    Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, dayExerciseId, setNumber])
 }
