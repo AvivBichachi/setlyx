@@ -58,4 +58,5 @@ model DayExercise {
   targetSets   Int
   minReps      Int
   maxReps      Int
+  @@unique([programDayId, order])
 }
