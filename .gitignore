@@ -1,0 +1,26 @@
+# Node
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+**/dist/
+
+# Prisma
+**/.prisma/
+**/node_modules/.prisma/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
