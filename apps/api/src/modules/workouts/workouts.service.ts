@@ -274,4 +274,158 @@ export class WorkoutsService {
       exercises,
     };
   }
+
+  async getSetDefaults(sessionId: number, dayExerciseId: number) {
+    const session = await this.getSessionOr404(sessionId);
+
+    // dayExercise חייב להיות מתוך אותו ProgramDay של הסשן
+    const de = await this.prisma.dayExercise.findFirst({
+      where: { id: dayExerciseId, programDayId: session.programDayId },
+      select: { id: true, exerciseId: true },
+    });
+
+    if (!de) {
+      throw new NotFoundException('Day exercise not found under session day');
+    }
+
+    const exerciseId = de.exerciseId;
+
+    // 1) suggested: "Top working set" מהאימון האחרון (הקודם) שבו התרגיל בוצע
+    const lastSessionWithExercise = await this.prisma.workoutSession.findFirst({
+      where: {
+        id: { not: sessionId },
+        sets: {
+          some: {
+            dayExercise: { exerciseId },
+          },
+        },
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, startedAt: true },
+    });
+
+    let suggested: any = null;
+
+    if (lastSessionWithExercise) {
+      const topSet = await this.prisma.workoutSet.findFirst({
+        where: {
+          sessionId: lastSessionWithExercise.id,
+          dayExercise: { exerciseId },
+        },
+        orderBy: [
+          { weight: 'desc' },
+          { reps: 'desc' },
+          { setNumber: 'desc' },
+          { id: 'desc' },
+        ],
+        select: { id: true, weight: true, reps: true },
+      });
+
+      if (topSet) {
+        suggested = {
+          weight: topSet.weight,
+          reps: topSet.reps,
+          source: 'LAST_SESSION_TOP_SET',
+          basedOn: {
+            sessionId: lastSessionWithExercise.id,
+            performedAt: lastSessionWithExercise.startedAt.toISOString(),
+            setId: topSet.id,
+            weight: topSet.weight,
+            reps: topSet.reps,
+          },
+        };
+      }
+    }
+
+    // 2) bestRecentE1rm: חלון 8 אימונים אחרונים שבהם התרגיל בוצע (ללא הסשן הנוכחי)
+    const windowSessions = await this.prisma.workoutSession.findMany({
+      where: {
+        id: { not: sessionId },
+        sets: { some: { dayExercise: { exerciseId } } },
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      take: 8,
+      select: { id: true, startedAt: true },
+    });
+
+    let bestRecentE1rm: any = null;
+
+    if (windowSessions.length > 0) {
+      const sessionIds = windowSessions.map((s) => s.id);
+      const startedAtBySessionId = new Map(windowSessions.map((s) => [s.id, s.startedAt] as const));
+
+      const eligibleSets = await this.prisma.workoutSet.findMany({
+        where: {
+          sessionId: { in: sessionIds },
+          dayExercise: { exerciseId },
+          reps: { gte: 3, lte: 12 },
+          weight: { gt: 0 },
+        },
+        select: {
+          id: true,
+          sessionId: true,
+          reps: true,
+          weight: true,
+        },
+      });
+
+      const epley = (w: number, r: number) => w * (1 + r / 30);
+
+      if (eligibleSets.length > 0) {
+        let best = eligibleSets[0];
+        let bestVal = epley(best.weight, best.reps);
+
+        for (let i = 1; i < eligibleSets.length; i++) {
+          const cur = eligibleSets[i];
+          const curVal = epley(cur.weight, cur.reps);
+
+          const bestAt = startedAtBySessionId.get(best.sessionId) ?? new Date(0);
+          const curAt = startedAtBySessionId.get(cur.sessionId) ?? new Date(0);
+
+          const isBetter =
+            curVal > bestVal ||
+            (curVal === bestVal && cur.weight > best.weight) ||
+            (curVal === bestVal && cur.weight === best.weight && cur.reps > best.reps) ||
+            (curVal === bestVal &&
+              cur.weight === best.weight &&
+              cur.reps === best.reps &&
+              curAt > bestAt) ||
+            (curVal === bestVal &&
+              cur.weight === best.weight &&
+              cur.reps === best.reps &&
+              curAt.getTime() === bestAt.getTime() &&
+              cur.id > best.id);
+
+          if (isBetter) {
+            best = cur;
+            bestVal = curVal;
+          }
+        }
+
+        const performedAt = startedAtBySessionId.get(best.sessionId) ?? new Date(0);
+
+        bestRecentE1rm = {
+          windowSessions: 8,
+          formula: 'EPLEY',
+          repsFilter: { min: 3, max: 12 },
+          e1rm: Number(bestVal.toFixed(1)),
+          set: {
+            sessionId: best.sessionId,
+            performedAt: performedAt.toISOString(),
+            setId: best.id,
+            weight: best.weight,
+            reps: best.reps,
+          },
+        };
+      }
+    }
+
+    return {
+      sessionId,
+      dayExerciseId,
+      exerciseId,
+      suggested,
+      bestRecentE1rm,
+    };
+  }
 }
