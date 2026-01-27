@@ -15,6 +15,11 @@ import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 export class WorkoutsController {
   constructor(private readonly workoutsService: WorkoutsService) { }
 
+  @Get()
+  findAll() {
+    return this.workoutsService.findAll();
+  }
+
   @Post('start')
   start(@Body() dto: StartWorkoutSessionDto) {
     return this.workoutsService.start(dto);
@@ -25,7 +30,7 @@ export class WorkoutsController {
     return this.workoutsService.getSession(sessionId);
   }
 
-  @Get('sessions/:sessionId')
+  @Get(':sessionId/details')
   findOneDetailed(
     @Param('sessionId', ParseIntPipe) sessionId: number,
   ) {
