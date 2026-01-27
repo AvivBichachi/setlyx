@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ExercisesService } from './exercises.service';
 import { CreateExerciseDto } from './dto/create-exercise.dto';
@@ -14,7 +15,7 @@ import { UpdateExerciseDto } from './dto/update-exercise.dto';
 
 @Controller('exercises')
 export class ExercisesController {
-  constructor(private readonly exercisesService: ExercisesService) {}
+  constructor(private readonly exercisesService: ExercisesService) { }
 
   @Post()
   create(@Body() dto: CreateExerciseDto) {
@@ -43,5 +44,16 @@ export class ExercisesController {
   async remove(@Param('exerciseId', ParseIntPipe) id: number) {
     await this.exercisesService.remove(id);
     return { ok: true };
+  }
+
+  @Get(':exerciseId/progress')
+  getProgress(
+    @Param('exerciseId', ParseIntPipe) exerciseId: number,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.exercisesService.getProgress(exerciseId, { limit, cursor, from, to });
   }
 }
