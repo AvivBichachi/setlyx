@@ -10,7 +10,7 @@ import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 
 @Injectable()
 export class WorkoutsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async ensureProgramDayOwnership(programId: number, programDayId: number) {
     const day = await this.prisma.programDay.findFirst({
@@ -95,5 +95,79 @@ export class WorkoutsService {
       where: { id: sessionId },
       data: { endedAt: new Date() },
     });
+  }
+
+  async findAll() {
+    return this.prisma.workoutSession.findMany({
+      orderBy: { startedAt: 'desc' },
+      select: {
+        id: true,
+        startedAt: true,
+        endedAt: true,
+        program: { select: { id: true, name: true, type: true } },
+        programDay: { select: { id: true, name: true, order: true } },
+        _count: { select: { sets: true } },
+      },
+    });
+  }
+
+  async findOneDetailed(sessionId: number) {
+    const session = await this.prisma.workoutSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        program: { select: { id: true, name: true, type: true } },
+        programDay: { select: { id: true, name: true, order: true } },
+      },
+    });
+
+
+    if (!session) {
+      throw new NotFoundException('Workout session not found');
+    }
+
+    const plannedExercises = await this.prisma.dayExercise.findMany({
+      where: { programDayId: session.programDayId },
+      orderBy: { order: 'asc' },
+      include: {
+        exercise: { select: { id: true, name: true } },
+      },
+    });
+
+    const performedSets = await this.prisma.workoutSet.findMany({
+      where: { sessionId: session.id },
+      orderBy: { setNumber: 'asc' },
+    });
+
+    const setsByDayExerciseId = new Map<
+      number,
+      { setNumber: number; reps: number; weight: number }[]
+    >();
+
+    for (const s of performedSets) {
+      const arr = setsByDayExerciseId.get(s.dayExerciseId) ?? [];
+      arr.push({ setNumber: s.setNumber, reps: s.reps, weight: s.weight });
+      setsByDayExerciseId.set(s.dayExerciseId, arr);
+    }
+
+    const exercises = plannedExercises.map((de) => ({
+      dayExercise: {
+        id: de.id,
+        order: de.order,
+        targetSets: de.targetSets,
+        minReps: de.minReps,
+        maxReps: de.maxReps,
+        exercise: de.exercise, // { id, name }
+      },
+      performedSets: setsByDayExerciseId.get(de.id) ?? [],
+    }));
+
+    return {
+      id: session.id,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      program: session.program,
+      programDay: session.programDay,
+      exercises,
+    };
   }
 }
