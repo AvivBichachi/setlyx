@@ -49,4 +49,9 @@ export class WorkoutsController {
   finish(@Param('sessionId', ParseIntPipe) sessionId: number) {
     return this.workoutsService.finish(sessionId);
   }
+
+  @Get(':sessionId/summary')
+  getSummary(@Param('sessionId', ParseIntPipe) sessionId: number) {
+    return this.workoutsService.getSummary(sessionId);
+  }
 }

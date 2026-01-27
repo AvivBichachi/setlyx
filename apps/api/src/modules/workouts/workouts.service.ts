@@ -170,4 +170,108 @@ export class WorkoutsService {
       exercises,
     };
   }
+
+  async getSummary(sessionId: number) {
+    // 1) session + קונטקסט בסיסי
+    const session = await this.prisma.workoutSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        startedAt: true,
+        endedAt: true,
+      },
+    });
+
+    if (!session) throw new NotFoundException('Workout session not found');
+
+    // 2) כל הסטים עם join עד Exercise (בלי N+1)
+    const sets = await this.prisma.workoutSet.findMany({
+      where: { sessionId },
+      orderBy: [{ dayExerciseId: 'asc' }, { setNumber: 'asc' }],
+      select: {
+        id: true,
+        setNumber: true,
+        reps: true,
+        weight: true,
+        dayExerciseId: true,
+        dayExercise: {
+          select: {
+            exercise: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    // durationSeconds לפי דרישה: רק אם הסתיים
+    const durationSeconds =
+      session.endedAt ? Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000) : null;
+
+    // totals
+    let totalSets = 0;
+    let totalReps = 0;
+    let totalVolume = 0;
+
+    // per exercise aggregation
+    type TopSet = { weight: number; reps: number };
+    type ExerciseAgg = {
+      exerciseId: number;
+      name: string;
+      sets: number;
+      repsTotal: number;
+      volume: number;
+      topSet: TopSet | null;
+    };
+
+    const byExercise = new Map<number, ExerciseAgg>();
+
+    for (const s of sets) {
+      const ex = s.dayExercise.exercise;
+      const volume = s.reps * s.weight;
+
+      totalSets += 1;
+      totalReps += s.reps;
+      totalVolume += volume;
+
+      const curr = byExercise.get(ex.id) ?? {
+        exerciseId: ex.id,
+        name: ex.name,
+        sets: 0,
+        repsTotal: 0,
+        volume: 0,
+        topSet: null,
+      };
+
+      curr.sets += 1;
+      curr.repsTotal += s.reps;
+      curr.volume += volume;
+
+      // topSet: הכי גבוה weight, ואם תיקו אז הכי גבוה reps
+      if (
+        curr.topSet === null ||
+        s.weight > curr.topSet.weight ||
+        (s.weight === curr.topSet.weight && s.reps > curr.topSet.reps)
+      ) {
+        curr.topSet = { weight: s.weight, reps: s.reps };
+      }
+
+      byExercise.set(ex.id, curr);
+    }
+
+    // יציבות: נמיין לפי שם/או לפי exerciseId (תבחר אחד).
+    // הכי דטרמיניסטי: exerciseId asc
+    const exercises = Array.from(byExercise.values()).sort((a, b) => a.exerciseId - b.exerciseId);
+
+    return {
+      sessionId: session.id,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      durationSeconds,
+      totals: {
+        totalSets,
+        totalReps,
+        totalVolume,
+      },
+      exercises,
+    };
+  }
 }
