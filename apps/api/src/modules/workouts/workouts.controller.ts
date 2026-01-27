@@ -6,10 +6,12 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { WorkoutsService } from './workouts.service';
 import { StartWorkoutSessionDto } from './dto/start-workout-session.dto';
 import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
+import { GetSetDefaultsQueryDto } from './dto/get-set-defaults.query.dto';
 
 @Controller('workouts/sessions')
 export class WorkoutsController {
@@ -35,6 +37,14 @@ export class WorkoutsController {
     @Param('sessionId', ParseIntPipe) sessionId: number,
   ) {
     return this.workoutsService.findOneDetailed(sessionId);
+  }
+
+  @Get(':sessionId/sets/defaults')
+  getSetDefaults(
+    @Param('sessionId', ParseIntPipe) sessionId: number,
+    @Query() query: GetSetDefaultsQueryDto,
+  ) {
+    return this.workoutsService.getSetDefaults(sessionId, query.dayExerciseId);
   }
 
   @Post(':sessionId/sets')
