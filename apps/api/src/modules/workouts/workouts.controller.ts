@@ -4,7 +4,6 @@ import {
   Get,
   Param,
   ParseIntPipe,
-  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -16,7 +15,7 @@ import { CurrentUserId } from '../../common/current-user-id.decorator';
 
 @Controller('workouts/sessions')
 export class WorkoutsController {
-  constructor(private readonly workoutsService: WorkoutsService) { }
+  constructor(private readonly workoutsService: WorkoutsService) {}
 
   @Get()
   findAll(@CurrentUserId() userId: number) {
@@ -29,19 +28,24 @@ export class WorkoutsController {
   }
 
   @Get(':sessionId')
-  getSession(@CurrentUserId() userId: number, @Param('sessionId', ParseIntPipe) sessionId: number) {
+  getSession(
+    @CurrentUserId() userId: number,
+    @Param('sessionId', ParseIntPipe) sessionId: number,
+  ) {
     return this.workoutsService.getSession(userId, sessionId);
   }
 
   @Get(':sessionId/details')
-  findOneDetailed(@CurrentUserId() userId: number,
+  findOneDetailed(
+    @CurrentUserId() userId: number,
     @Param('sessionId', ParseIntPipe) sessionId: number,
   ) {
     return this.workoutsService.findOneDetailed(userId, sessionId);
   }
 
   @Get(':sessionId/sets/defaults')
-  getSetDefaults(@CurrentUserId() userId: number,
+  getSetDefaults(
+    @CurrentUserId() userId: number,
     @Param('sessionId', ParseIntPipe) sessionId: number,
     @Query() query: GetSetDefaultsQueryDto,
   ) {
@@ -49,20 +53,28 @@ export class WorkoutsController {
   }
 
   @Post(':sessionId/sets')
-  addSet(@CurrentUserId() userId: number,
+  addSet(
+    @CurrentUserId() userId: number,
     @Param('sessionId', ParseIntPipe) sessionId: number,
     @Body() dto: CreateWorkoutSetDto,
   ) {
     return this.workoutsService.addSet(userId, sessionId, dto);
   }
 
-  @Patch(':sessionId/finish')
-  finish(@CurrentUserId() userId: number, @Param('sessionId', ParseIntPipe) sessionId: number) {
+  // ✅ change PATCH -> POST (action endpoint)
+  @Post(':sessionId/finish')
+  finish(
+    @CurrentUserId() userId: number,
+    @Param('sessionId', ParseIntPipe) sessionId: number,
+  ) {
     return this.workoutsService.finish(userId, sessionId);
   }
 
   @Get(':sessionId/summary')
-  getSummary(@CurrentUserId() userId: number, @Param('sessionId', ParseIntPipe) sessionId: number) {
+  getSummary(
+    @CurrentUserId() userId: number,
+    @Param('sessionId', ParseIntPipe) sessionId: number,
+  ) {
     return this.workoutsService.getSummary(userId, sessionId);
   }
 }

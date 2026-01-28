@@ -1,5 +1,5 @@
 import { ProgramType } from '@prisma/client';
-import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, IsBoolean } from 'class-validator';
 
 export class CreateProgramDto {
   @IsString()
@@ -9,4 +9,8 @@ export class CreateProgramDto {
   @IsString()
   @IsIn(['AB', 'PPL', 'FULL_BODY', 'CUSTOM'])
   type!: ProgramType;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

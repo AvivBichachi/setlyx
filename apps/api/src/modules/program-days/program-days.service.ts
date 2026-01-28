@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ProgramDay } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProgramDayDto } from './dto/create-program-day.dto';
@@ -12,16 +8,16 @@ import { UpdateProgramDayDto } from './dto/update-program-day.dto';
 export class ProgramDaysService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async ensureProgramExists(programId: number): Promise<void> {
-    const exists = await this.prisma.program.findUnique({
-      where: { id: programId },
+  private async ensureProgramOwnership(userId: number, programId: number): Promise<void> {
+    const program = await this.prisma.program.findFirst({
+      where: { id: programId, userId },
       select: { id: true },
     });
-    if (!exists) throw new NotFoundException('Program not found');
+    if (!program) throw new NotFoundException('Program not found');
   }
 
-  async create(programId: number, dto: CreateProgramDayDto): Promise<ProgramDay> {
-    await this.ensureProgramExists(programId);
+  async create(userId: number, programId: number, dto: CreateProgramDayDto): Promise<ProgramDay> {
+    await this.ensureProgramOwnership(userId, programId);
 
     try {
       return await this.prisma.programDay.create({
@@ -40,20 +36,28 @@ export class ProgramDaysService {
     }
   }
 
-  async findAll(programId: number): Promise<ProgramDay[]> {
-    await this.ensureProgramExists(programId);
+  async findAll(userId: number, programId: number): Promise<ProgramDay[]> {
+    // validate ownership and avoid leaking whether programId exists
+    await this.ensureProgramOwnership(userId, programId);
 
     return this.prisma.programDay.findMany({
-      where: { programId },
+      where: {
+        programId,
+        program: { userId },
+      },
       orderBy: { order: 'asc' },
     });
   }
 
-  async findOne(programId: number, dayId: number): Promise<ProgramDay> {
-    await this.ensureProgramExists(programId);
+  async findOne(userId: number, programId: number, dayId: number): Promise<ProgramDay> {
+    await this.ensureProgramOwnership(userId, programId);
 
     const day = await this.prisma.programDay.findFirst({
-      where: { id: dayId, programId },
+      where: {
+        id: dayId,
+        programId,
+        program: { userId },
+      },
     });
 
     if (!day) throw new NotFoundException('Program day not found');
@@ -61,20 +65,42 @@ export class ProgramDaysService {
   }
 
   async update(
+    userId: number,
     programId: number,
     dayId: number,
     dto: UpdateProgramDayDto,
   ): Promise<ProgramDay> {
-    await this.ensureProgramExists(programId);
+    await this.ensureProgramOwnership(userId, programId);
 
-    // Ensure ownership
-    await this.findOne(programId, dayId);
+    // whitelist (avoid future over-posting)
+    const data: Prisma.ProgramDayUpdateManyMutationInput = {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.order !== undefined ? { order: dto.order } : {}),
+    };
 
     try {
-      return await this.prisma.programDay.update({
-        where: { id: dayId },
-        data: dto,
+      const res = await this.prisma.programDay.updateMany({
+        where: {
+          id: dayId,
+          programId,
+          program: { userId },
+        },
+        data,
       });
+
+      if (res.count === 0) throw new NotFoundException('Program day not found');
+
+      // return updated row
+      const updated = await this.prisma.programDay.findFirst({
+        where: {
+          id: dayId,
+          programId,
+          program: { userId },
+        },
+      });
+
+      if (!updated) throw new NotFoundException('Program day not found');
+      return updated;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('Day order already exists for this program');
@@ -83,12 +109,17 @@ export class ProgramDaysService {
     }
   }
 
-  async remove(programId: number, dayId: number): Promise<void> {
-    await this.ensureProgramExists(programId);
+  async remove(userId: number, programId: number, dayId: number): Promise<void> {
+    await this.ensureProgramOwnership(userId, programId);
 
-    // Ensure ownership
-    await this.findOne(programId, dayId);
+    const res = await this.prisma.programDay.deleteMany({
+      where: {
+        id: dayId,
+        programId,
+        program: { userId },
+      },
+    });
 
-    await this.prisma.programDay.delete({ where: { id: dayId } });
+    if (res.count === 0) throw new NotFoundException('Program day not found');
   }
 }
