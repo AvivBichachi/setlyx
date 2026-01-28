@@ -10,19 +10,16 @@ import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 
 @Injectable()
 export class WorkoutsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
-  private async ensureProgramDayOwnership(
-    userId: number,
-    programId: number,
-    programDayId: number,
-  ) {
+  private async ensureProgramDayOwnership(userId: number, programDayId: number): Promise<{ id: number; programId: number }> {
     const day = await this.prisma.programDay.findFirst({
-      where: { id: programDayId, programId, program: { userId } },
-      select: { id: true },
+      where: { id: programDayId, program: { userId } },
+      select: { id: true, programId: true },
     });
 
     if (!day) throw new NotFoundException('Program day not found');
+    return day;
   }
 
   private async getSessionOr404(userId: number, sessionId: number) {
@@ -43,13 +40,13 @@ export class WorkoutsService {
   }
 
   async start(userId: number, dto: StartWorkoutSessionDto) {
-    await this.ensureProgramDayOwnership(userId, dto.programId, dto.programDayId);
+    const day = await this.ensureProgramDayOwnership(userId, dto.programDayId);
 
     return this.prisma.workoutSession.create({
       data: {
         userId,
-        programId: dto.programId,
-        programDayId: dto.programDayId,
+        programId: day.programId,
+        programDayId: day.id,
       },
       select: {
         id: true,
