@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { CurrentUserId } from '../../common/current-user-id.decorator';
 import { DayExercisesService } from './day-exercises.service';
 import { CreateDayExerciseDto } from './dto/create-day-exercise.dto';
 import { UpdateDayExerciseDto } from './dto/update-day-exercise.dto';
@@ -18,38 +19,52 @@ export class DayExercisesController {
 
   @Post()
   create(
+    @CurrentUserId() userId: number,
     @Param('programId', ParseIntPipe) programId: number,
     @Param('dayId', ParseIntPipe) dayId: number,
     @Body() dto: CreateDayExerciseDto,
   ) {
-    return this.dayExercisesService.create(programId, dayId, dto);
+    return this.dayExercisesService.create(userId, programId, dayId, dto);
   }
 
   @Get()
   findAll(
+    @CurrentUserId() userId: number,
     @Param('programId', ParseIntPipe) programId: number,
     @Param('dayId', ParseIntPipe) dayId: number,
   ) {
-    return this.dayExercisesService.findAll(programId, dayId);
+    return this.dayExercisesService.findAll(userId, programId, dayId);
+  }
+
+  @Get(':dayExerciseId')
+  findOne(
+    @CurrentUserId() userId: number,
+    @Param('programId', ParseIntPipe) programId: number,
+    @Param('dayId', ParseIntPipe) dayId: number,
+    @Param('dayExerciseId', ParseIntPipe) dayExerciseId: number,
+  ) {
+    return this.dayExercisesService.findOne(userId, programId, dayId, dayExerciseId);
   }
 
   @Patch(':dayExerciseId')
   update(
+    @CurrentUserId() userId: number,
     @Param('programId', ParseIntPipe) programId: number,
     @Param('dayId', ParseIntPipe) dayId: number,
     @Param('dayExerciseId', ParseIntPipe) dayExerciseId: number,
     @Body() dto: UpdateDayExerciseDto,
   ) {
-    return this.dayExercisesService.update(programId, dayId, dayExerciseId, dto);
+    return this.dayExercisesService.update(userId, programId, dayId, dayExerciseId, dto);
   }
 
   @Delete(':dayExerciseId')
   async remove(
+    @CurrentUserId() userId: number,
     @Param('programId', ParseIntPipe) programId: number,
     @Param('dayId', ParseIntPipe) dayId: number,
     @Param('dayExerciseId', ParseIntPipe) dayExerciseId: number,
   ) {
-    await this.dayExercisesService.remove(programId, dayId, dayExerciseId);
+    await this.dayExercisesService.remove(userId, programId, dayId, dayExerciseId);
     return { ok: true };
   }
 }
