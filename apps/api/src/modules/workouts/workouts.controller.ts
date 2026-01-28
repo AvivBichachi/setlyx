@@ -12,56 +12,57 @@ import { WorkoutsService } from './workouts.service';
 import { StartWorkoutSessionDto } from './dto/start-workout-session.dto';
 import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 import { GetSetDefaultsQueryDto } from './dto/get-set-defaults.query.dto';
+import { CurrentUserId } from '../../common/current-user-id.decorator';
 
 @Controller('workouts/sessions')
 export class WorkoutsController {
   constructor(private readonly workoutsService: WorkoutsService) { }
 
   @Get()
-  findAll() {
-    return this.workoutsService.findAll();
+  findAll(@CurrentUserId() userId: number) {
+    return this.workoutsService.findAll(userId);
   }
 
   @Post('start')
-  start(@Body() dto: StartWorkoutSessionDto) {
-    return this.workoutsService.start(dto);
+  start(@CurrentUserId() userId: number, @Body() dto: StartWorkoutSessionDto) {
+    return this.workoutsService.start(userId, dto);
   }
 
   @Get(':sessionId')
-  getSession(@Param('sessionId', ParseIntPipe) sessionId: number) {
-    return this.workoutsService.getSession(sessionId);
+  getSession(@CurrentUserId() userId: number, @Param('sessionId', ParseIntPipe) sessionId: number) {
+    return this.workoutsService.getSession(userId, sessionId);
   }
 
   @Get(':sessionId/details')
-  findOneDetailed(
+  findOneDetailed(@CurrentUserId() userId: number,
     @Param('sessionId', ParseIntPipe) sessionId: number,
   ) {
-    return this.workoutsService.findOneDetailed(sessionId);
+    return this.workoutsService.findOneDetailed(userId, sessionId);
   }
 
   @Get(':sessionId/sets/defaults')
-  getSetDefaults(
+  getSetDefaults(@CurrentUserId() userId: number,
     @Param('sessionId', ParseIntPipe) sessionId: number,
     @Query() query: GetSetDefaultsQueryDto,
   ) {
-    return this.workoutsService.getSetDefaults(sessionId, query.dayExerciseId);
+    return this.workoutsService.getSetDefaults(userId, sessionId, query.dayExerciseId);
   }
 
   @Post(':sessionId/sets')
-  addSet(
+  addSet(@CurrentUserId() userId: number,
     @Param('sessionId', ParseIntPipe) sessionId: number,
     @Body() dto: CreateWorkoutSetDto,
   ) {
-    return this.workoutsService.addSet(sessionId, dto);
+    return this.workoutsService.addSet(userId, sessionId, dto);
   }
 
   @Patch(':sessionId/finish')
-  finish(@Param('sessionId', ParseIntPipe) sessionId: number) {
-    return this.workoutsService.finish(sessionId);
+  finish(@CurrentUserId() userId: number, @Param('sessionId', ParseIntPipe) sessionId: number) {
+    return this.workoutsService.finish(userId, sessionId);
   }
 
   @Get(':sessionId/summary')
-  getSummary(@Param('sessionId', ParseIntPipe) sessionId: number) {
-    return this.workoutsService.getSummary(sessionId);
+  getSummary(@CurrentUserId() userId: number, @Param('sessionId', ParseIntPipe) sessionId: number) {
+    return this.workoutsService.getSummary(userId, sessionId);
   }
 }

@@ -10,7 +10,7 @@ import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 
 @Injectable()
 export class WorkoutsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private async ensureProgramDayOwnership(programId: number, programDayId: number) {
     const day = await this.prisma.programDay.findFirst({
@@ -20,31 +20,40 @@ export class WorkoutsService {
     if (!day) throw new NotFoundException('Program day not found under program');
   }
 
-  private async getSessionOr404(sessionId: number) {
-    const session = await this.prisma.workoutSession.findUnique({
-      where: { id: sessionId },
-      select: { id: true, programId: true, programDayId: true, endedAt: true },
+  private async getSessionOr404(userId: number, sessionId: number) {
+    const session = await this.prisma.workoutSession.findFirst({
+      where: { id: sessionId, userId },
+      select: {
+        id: true,
+        userId: true,
+        programId: true,
+        programDayId: true,
+        endedAt: true,
+        startedAt: true,
+      },
     });
     if (!session) throw new NotFoundException('Workout session not found');
     return session;
   }
 
-  async start(dto: StartWorkoutSessionDto) {
+  async start(userId: number, dto: StartWorkoutSessionDto) {
     await this.ensureProgramDayOwnership(dto.programId, dto.programDayId);
 
     return this.prisma.workoutSession.create({
       data: {
+        userId,
         programId: dto.programId,
         programDayId: dto.programDayId,
       },
     });
   }
 
-  async getSession(sessionId: number) {
-    await this.getSessionOr404(sessionId);
+  async getSession(userId: number, sessionId: number) {
+    await this.getSessionOr404(userId, sessionId);
 
-    return this.prisma.workoutSession.findUnique({
-      where: { id: sessionId },
+    // IMPORTANT: findUnique({id}) can't include userId filter, so use findFirst
+    return this.prisma.workoutSession.findFirst({
+      where: { id: sessionId, userId },
       include: {
         sets: {
           orderBy: [{ dayExerciseId: 'asc' }, { setNumber: 'asc' }],
@@ -60,8 +69,8 @@ export class WorkoutsService {
     });
   }
 
-  async addSet(sessionId: number, dto: CreateWorkoutSetDto): Promise<WorkoutSet> {
-    const session = await this.getSessionOr404(sessionId);
+  async addSet(userId: number, sessionId: number, dto: CreateWorkoutSetDto): Promise<WorkoutSet> {
+    const session = await this.getSessionOr404(userId, sessionId);
     if (session.endedAt) throw new ConflictException('Workout session already finished');
 
     const de = await this.prisma.dayExercise.findFirst({
@@ -88,8 +97,8 @@ export class WorkoutsService {
     }
   }
 
-  async finish(sessionId: number) {
-    await this.getSessionOr404(sessionId);
+  async finish(userId: number, sessionId: number) {
+    await this.getSessionOr404(userId, sessionId);
 
     return this.prisma.workoutSession.update({
       where: { id: sessionId },
@@ -97,8 +106,9 @@ export class WorkoutsService {
     });
   }
 
-  async findAll() {
+  async findAll(userId: number) {
     return this.prisma.workoutSession.findMany({
+      where: { userId },
       orderBy: { startedAt: 'desc' },
       select: {
         id: true,
@@ -111,19 +121,19 @@ export class WorkoutsService {
     });
   }
 
-  async findOneDetailed(sessionId: number) {
-    const session = await this.prisma.workoutSession.findUnique({
-      where: { id: sessionId },
+  async findOneDetailed(userId: number, sessionId: number) {
+    // enforce ownership
+    await this.getSessionOr404(userId, sessionId);
+
+    const session = await this.prisma.workoutSession.findFirst({
+      where: { id: sessionId, userId },
       include: {
         program: { select: { id: true, name: true, type: true } },
         programDay: { select: { id: true, name: true, order: true } },
       },
     });
 
-
-    if (!session) {
-      throw new NotFoundException('Workout session not found');
-    }
+    if (!session) throw new NotFoundException('Workout session not found');
 
     const plannedExercises = await this.prisma.dayExercise.findMany({
       where: { programDayId: session.programDayId },
@@ -171,10 +181,12 @@ export class WorkoutsService {
     };
   }
 
-  async getSummary(sessionId: number) {
-    // 1) session + קונטקסט בסיסי
-    const session = await this.prisma.workoutSession.findUnique({
-      where: { id: sessionId },
+  async getSummary(userId: number, sessionId: number) {
+    // enforce ownership
+    await this.getSessionOr404(userId, sessionId);
+
+    const session = await this.prisma.workoutSession.findFirst({
+      where: { id: sessionId, userId },
       select: {
         id: true,
         startedAt: true,
@@ -184,7 +196,6 @@ export class WorkoutsService {
 
     if (!session) throw new NotFoundException('Workout session not found');
 
-    // 2) כל הסטים עם join עד Exercise (בלי N+1)
     const sets = await this.prisma.workoutSet.findMany({
       where: { sessionId },
       orderBy: [{ dayExerciseId: 'asc' }, { setNumber: 'asc' }],
@@ -202,16 +213,15 @@ export class WorkoutsService {
       },
     });
 
-    // durationSeconds לפי דרישה: רק אם הסתיים
     const durationSeconds =
-      session.endedAt ? Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000) : null;
+      session.endedAt
+        ? Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000)
+        : null;
 
-    // totals
     let totalSets = 0;
     let totalReps = 0;
     let totalVolume = 0;
 
-    // per exercise aggregation
     type TopSet = { weight: number; reps: number };
     type ExerciseAgg = {
       exerciseId: number;
@@ -245,7 +255,6 @@ export class WorkoutsService {
       curr.repsTotal += s.reps;
       curr.volume += volume;
 
-      // topSet: הכי גבוה weight, ואם תיקו אז הכי גבוה reps
       if (
         curr.topSet === null ||
         s.weight > curr.topSet.weight ||
@@ -257,8 +266,6 @@ export class WorkoutsService {
       byExercise.set(ex.id, curr);
     }
 
-    // יציבות: נמיין לפי שם/או לפי exerciseId (תבחר אחד).
-    // הכי דטרמיניסטי: exerciseId asc
     const exercises = Array.from(byExercise.values()).sort((a, b) => a.exerciseId - b.exerciseId);
 
     return {
@@ -275,10 +282,9 @@ export class WorkoutsService {
     };
   }
 
-  async getSetDefaults(sessionId: number, dayExerciseId: number) {
-    const session = await this.getSessionOr404(sessionId);
+  async getSetDefaults(userId: number, sessionId: number, dayExerciseId: number) {
+    const session = await this.getSessionOr404(userId, sessionId);
 
-    // dayExercise חייב להיות מתוך אותו ProgramDay של הסשן
     const de = await this.prisma.dayExercise.findFirst({
       where: { id: dayExerciseId, programDayId: session.programDayId },
       select: { id: true, exerciseId: true },
@@ -290,9 +296,10 @@ export class WorkoutsService {
 
     const exerciseId = de.exerciseId;
 
-    // 1) suggested: "Top working set" מהאימון האחרון (הקודם) שבו התרגיל בוצע
+    // 1) Suggested: top working set from most recent prior session FOR THIS USER
     const lastSessionWithExercise = await this.prisma.workoutSession.findFirst({
       where: {
+        userId,
         id: { not: sessionId },
         sets: {
           some: {
@@ -337,9 +344,10 @@ export class WorkoutsService {
       }
     }
 
-    // 2) bestRecentE1rm: חלון 8 אימונים אחרונים שבהם התרגיל בוצע (ללא הסשן הנוכחי)
+    // 2) BestRecentE1rm: last 8 sessions where exercise performed FOR THIS USER
     const windowSessions = await this.prisma.workoutSession.findMany({
       where: {
+        userId,
         id: { not: sessionId },
         sets: { some: { dayExercise: { exerciseId } } },
       },

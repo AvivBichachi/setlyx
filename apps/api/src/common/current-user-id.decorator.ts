@@ -1,0 +1,17 @@
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export const CurrentUserId = createParamDecorator(
+  (_: unknown, ctx: ExecutionContext): number => {
+    const req = ctx.switchToHttp().getRequest();
+
+    const raw = req.headers['x-user-id'];
+    const parsed =
+      typeof raw === 'string'
+        ? Number(raw)
+        : Array.isArray(raw)
+          ? Number(raw[0])
+          : NaN;
+
+    return Number.isFinite(parsed) ? parsed : 1; // fallback for local dev
+  },
+);
