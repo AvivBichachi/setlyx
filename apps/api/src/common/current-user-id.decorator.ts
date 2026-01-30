@@ -1,19 +1,20 @@
-import { createParamDecorator, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  createParamDecorator,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 
-export const CurrentUserId = createParamDecorator((_: unknown, ctx: ExecutionContext): number => {
-  const req = ctx.switchToHttp().getRequest();
-  const raw = req.headers['x-user-id'];
+export const CurrentUserId = createParamDecorator(
+  (_: unknown, ctx: ExecutionContext): number => {
+    const req = ctx.switchToHttp().getRequest();
 
-  const parsed =
-    typeof raw === 'string'
-      ? Number(raw)
-      : Array.isArray(raw)
-        ? Number(raw[0])
-        : NaN;
+    // passport-jwt puts payload in req.user
+    const sub = req.user?.sub;
 
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new UnauthorizedException('Missing/invalid user identity');
-  }
+    if (!Number.isFinite(sub) || sub <= 0) {
+      throw new UnauthorizedException('Missing/invalid JWT identity');
+    }
 
-  return parsed;
-});
+    return Number(sub);
+  },
+);
