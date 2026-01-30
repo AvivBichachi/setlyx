@@ -6,13 +6,16 @@ import {
   ParseIntPipe,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { WorkoutsService } from './workouts.service';
 import { StartWorkoutSessionDto } from './dto/start-workout-session.dto';
 import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 import { GetSetDefaultsQueryDto } from './dto/get-set-defaults.query.dto';
 import { CurrentUserId } from '../../common/current-user-id.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('workouts/sessions')
 export class WorkoutsController {
   constructor(private readonly workoutsService: WorkoutsService) {}

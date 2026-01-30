@@ -7,12 +7,15 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { CurrentUserId } from '../../common/current-user-id.decorator';
 import { DayExercisesService } from './day-exercises.service';
 import { CreateDayExerciseDto } from './dto/create-day-exercise.dto';
 import { UpdateDayExerciseDto } from './dto/update-day-exercise.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('programs/:programId/days/:dayId/exercises')
 export class DayExercisesController {
   constructor(private readonly dayExercisesService: DayExercisesService) {}
