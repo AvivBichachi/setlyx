@@ -18,11 +18,16 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @Controller('workouts/sessions')
 export class WorkoutsController {
-  constructor(private readonly workoutsService: WorkoutsService) {}
+  constructor(private readonly workoutsService: WorkoutsService) { }
 
   @Get()
   findAll(@CurrentUserId() userId: number) {
     return this.workoutsService.findAll(userId);
+  }
+
+  @Get('active')
+  getActiveSession(@CurrentUserId() userId: number) {
+    return this.workoutsService.getActiveSession(userId);
   }
 
   @Post('start')
