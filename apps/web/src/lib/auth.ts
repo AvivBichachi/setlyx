@@ -1,8 +1,15 @@
+// apps/web/src/lib/auth.ts
+const KEY = 'setlyx_access_token';
+
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('accessToken');
+  return localStorage.getItem(KEY);
 }
 
 export function setToken(token: string) {
-  localStorage.setItem('accessToken', token);
+  localStorage.setItem(KEY, token);
+}
+
+export function clearToken() {
+  localStorage.removeItem(KEY);
 }
