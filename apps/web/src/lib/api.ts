@@ -1,37 +1,37 @@
-const API_BASE =
-  import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/api';
-
-export function getToken() {
-  return localStorage.getItem('access_token');
-}
-
-export function setToken(token: string) {
-  localStorage.setItem('access_token', token);
-}
-
-export function clearToken() {
-  localStorage.removeItem('access_token');
-}
+// apps/web/src/lib/api.ts
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000/api';
 
 export async function apiFetch<T>(
   path: string,
-  init?: RequestInit,
+  init?: RequestInit & { token?: string },
 ): Promise<T> {
-  const token = getToken();
+  const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const headers = new Headers(init?.headers);
+  headers.set('Accept', 'application/json');
+
+  if (init?.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (init?.token) {
+    headers.set('Authorization', `Bearer ${init.token}`);
+  }
+
+  const res = await fetch(url, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers,
+    cache: 'no-store',
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${text}`);
+    throw new Error(`HTTP ${res.status} ${res.statusText} :: ${text}`);
   }
 
-  return res.json() as Promise<T>;
+  // במקרה של 204
+  if (res.status === 204) return undefined as T;
+
+  return (await res.json()) as T;
 }
