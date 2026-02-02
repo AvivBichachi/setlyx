@@ -25,13 +25,37 @@ export async function apiFetch<T>(
     cache: 'no-store',
   });
 
+  const raw = await res.text().catch(() => '');
+
+  const tryParseJson = () => {
+    if (!raw) return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    if (!(trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed === 'null')) {
+      return undefined;
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return undefined;
+    }
+  };
+
+  const maybeJson = tryParseJson();
+
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} ${res.statusText} :: ${text}`);
+    const detail =
+      maybeJson !== undefined ? JSON.stringify(maybeJson) : raw;
+
+    throw new Error(`HTTP ${res.status} ${res.statusText} :: ${detail}`);
   }
 
-  // במקרה של 204
   if (res.status === 204) return undefined as T;
 
-  return (await res.json()) as T;
+  if (!raw) return undefined as T;
+
+  if (maybeJson !== undefined) return maybeJson as T;
+
+  return raw as unknown as T;
 }
+

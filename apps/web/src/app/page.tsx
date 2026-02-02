@@ -93,6 +93,14 @@ export default function HomePage() {
               Logout
             </button>
 
+            <button
+              className="rounded-md bg-zinc-100 text-zinc-900 px-4 py-2 font-semibold hover:bg-white"
+              onClick={() => (window.location.href = '/programs')}
+            >
+              Go to Start/Resume
+            </button>
+
+
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Programs</h2>
               <button

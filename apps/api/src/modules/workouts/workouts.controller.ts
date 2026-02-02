@@ -18,12 +18,19 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @Controller('workouts/sessions')
 export class WorkoutsController {
-  constructor(private readonly workoutsService: WorkoutsService) {}
+  constructor(private readonly workoutsService: WorkoutsService) { }
 
   @Get()
   findAll(@CurrentUserId() userId: number) {
     return this.workoutsService.findAll(userId);
   }
+
+  @Get('active')
+  async getActiveSession(@CurrentUserId() userId: number) {
+    const session = await this.workoutsService.getActiveSession(userId);
+    return { session: session ?? null };
+  }
+
 
   @Post('start')
   start(@CurrentUserId() userId: number, @Body() dto: StartWorkoutSessionDto) {

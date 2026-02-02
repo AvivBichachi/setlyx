@@ -40,23 +40,43 @@ export class WorkoutsService {
   }
 
   async start(userId: number, dto: StartWorkoutSessionDto) {
+    const active = await this.prisma.workoutSession.findFirst({
+      where: { userId, endedAt: null },
+      select: { id: true },
+    });
+
+    if (active) {
+      throw new ConflictException('Active workout session already exists');
+    }
+
     const day = await this.ensureProgramDayOwnership(userId, dto.programDayId);
 
-    return this.prisma.workoutSession.create({
-      data: {
-        userId,
-        programId: day.programId,
-        programDayId: day.id,
-      },
-      select: {
-        id: true,
-        startedAt: true,
-        endedAt: true,
-        programId: true,
-        programDayId: true,
-      },
-    });
+    try {
+      return await this.prisma.workoutSession.create({
+        data: {
+          userId,
+          programId: day.programId,
+          programDayId: day.id,
+        },
+        select: {
+          id: true,
+          startedAt: true,
+          endedAt: true,
+          programId: true,
+          programDayId: true,
+        },
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        throw new ConflictException('Active workout session already exists');
+      }
+      throw e;
+    }
   }
+
 
   async getSession(userId: number, sessionId: number) {
     await this.getSessionOr404(userId, sessionId);
@@ -77,6 +97,25 @@ export class WorkoutsService {
       },
     });
   }
+
+  async getActiveSession(userId: number) {
+    const session = await this.prisma.workoutSession.findFirst({
+      where: { userId, endedAt: null },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        startedAt: true,
+        endedAt: true,
+        programId: true,
+        programDayId: true,
+      },
+    });
+
+    return session ?? null;
+  }
+
+
+
 
   async addSet(
     userId: number,
@@ -116,20 +155,37 @@ export class WorkoutsService {
   }
 
   async finish(userId: number, sessionId: number) {
-    // סוגרים רק אם שייך למשתמש וגם עדיין לא הסתיים
-    const res = await this.prisma.workoutSession.updateMany({
-      where: { id: sessionId, userId, endedAt: null },
-      data: { endedAt: new Date() },
+    // 1) Find session ONLY if owned by this user (prevents info leak)
+    const session = await this.prisma.workoutSession.findFirst({
+      where: { id: sessionId, userId },
+      select: {
+        id: true,
+        endedAt: true,
+        startedAt: true,
+        programId: true,
+        programDayId: true,
+      },
     });
 
-    if (res.count === 0) {
-      // או לא קיים, או לא שלך, או כבר נסגר
+    // Not found OR not yours -> same response (no enumeration)
+    if (!session) {
       throw new NotFoundException('Workout session not found');
     }
 
-    // מחזירים את ה-session אחרי סגירה כדי שה-UI יוכל ישר לנווט לסיכום
-    return this.prisma.workoutSession.findFirst({
-      where: { id: sessionId, userId },
+    // 2) Owned by user: now it’s safe to be explicit
+    if (session.endedAt) {
+      // choose one:
+      // A) 409 conflict (explicit)
+      throw new ConflictException('Workout session already finished');
+
+      // or B) idempotent finish: return the session as-is (often nicer UX)
+      // return session;
+    }
+
+    // 3) Close it
+    return this.prisma.workoutSession.update({
+      where: { id: sessionId },
+      data: { endedAt: new Date() },
       select: {
         id: true,
         startedAt: true,
@@ -139,6 +195,7 @@ export class WorkoutsService {
       },
     });
   }
+
 
   async findAll(userId: number) {
     return this.prisma.workoutSession.findMany({
