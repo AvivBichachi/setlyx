@@ -274,8 +274,9 @@ export class WorkoutsService {
 
     const session = await this.prisma.workoutSession.findFirst({
       where: { id: sessionId, userId },
-      select: { id: true, startedAt: true, endedAt: true },
+      select: { id: true, startedAt: true, endedAt: true, programDayId: true },
     });
+
     if (!session) throw new NotFoundException('Workout session not found');
 
     const sets = await this.prisma.workoutSet.findMany({
@@ -295,7 +296,9 @@ export class WorkoutsService {
 
     const durationSeconds =
       session.endedAt
-        ? Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000)
+        ? Math.floor(
+          (session.endedAt.getTime() - session.startedAt.getTime()) / 1000,
+        )
         : null;
 
     let totalSets = 0;
@@ -303,6 +306,12 @@ export class WorkoutsService {
     let totalVolume = 0;
 
     type TopSet = { weight: number; reps: number };
+    type ProgressState =
+      | 'IMPROVED'
+      | 'REGRESSED'
+      | 'SAME'
+      | 'NO_BASELINE';
+
     type ExerciseAgg = {
       exerciseId: number;
       name: string;
@@ -346,7 +355,85 @@ export class WorkoutsService {
       byExercise.set(ex.id, curr);
     }
 
-    const exercises = Array.from(byExercise.values()).sort((a, b) => a.exerciseId - b.exerciseId);
+    // 🔎 Find previous session of the same ProgramDay
+    const previousSession = await this.prisma.workoutSession.findFirst({
+      where: {
+        userId,
+        programDayId: session.programDayId,
+        startedAt: { lt: session.startedAt },
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true },
+    });
+
+    type ExerciseSummary = {
+      exerciseId: number;
+      name: string;
+      sets: number;
+      repsTotal: number;
+      volume: number;
+      currentTopSet: TopSet | null;
+      previousTopSet: TopSet | null;
+      progress: ProgressState;
+    };
+
+
+    const exercises: ExerciseSummary[] = [];
+
+    for (const curr of byExercise.values()) {
+      let previousTopSet: TopSet | null = null;
+      let progress: ProgressState = 'NO_BASELINE';
+
+      if (previousSession && curr.topSet) {
+        const prevSet = await this.prisma.workoutSet.findFirst({
+          where: {
+            sessionId: previousSession.id,
+            dayExercise: { exerciseId: curr.exerciseId },
+          },
+          orderBy: [
+            { weight: 'desc' },
+            { reps: 'desc' },
+            { setNumber: 'desc' },
+            { id: 'desc' },
+          ],
+          select: { weight: true, reps: true },
+        });
+
+        if (prevSet) {
+          previousTopSet = {
+            weight: prevSet.weight,
+            reps: prevSet.reps,
+          };
+
+          if (curr.topSet.weight > prevSet.weight) {
+            progress = 'IMPROVED';
+          } else if (
+            curr.topSet.weight === prevSet.weight &&
+            curr.topSet.reps > prevSet.reps
+          ) {
+            progress = 'IMPROVED';
+          } else if (
+            curr.topSet.weight === prevSet.weight &&
+            curr.topSet.reps === prevSet.reps
+          ) {
+            progress = 'SAME';
+          } else {
+            progress = 'REGRESSED';
+          }
+        }
+      }
+
+      exercises.push({
+        exerciseId: curr.exerciseId,
+        name: curr.name,
+        sets: curr.sets,
+        repsTotal: curr.repsTotal,
+        volume: curr.volume,
+        currentTopSet: curr.topSet,
+        previousTopSet,
+        progress,
+      });
+    }
 
     return {
       sessionId: session.id,
@@ -357,6 +444,7 @@ export class WorkoutsService {
       exercises,
     };
   }
+
 
   async getSetDefaults(userId: number, sessionId: number, dayExerciseId: number) {
     const session = await this.getSessionOr404(userId, sessionId);
