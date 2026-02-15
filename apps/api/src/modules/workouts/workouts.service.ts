@@ -115,6 +115,23 @@ export class WorkoutsService {
   }
 
 
+  async getLastCompletedSession(userId: number) {
+    const session = await this.prisma.workoutSession.findFirst({
+      where: { userId, endedAt: { not: null } },
+      orderBy: [{ endedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        startedAt: true,
+        endedAt: true,
+        program: { select: { id: true, name: true, type: true } },
+        programDay: { select: { id: true, name: true, order: true } },
+      },
+    });
+
+    return session ?? null;
+  }
+
+
 
 
   async addSet(

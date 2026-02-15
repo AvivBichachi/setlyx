@@ -31,6 +31,12 @@ export class WorkoutsController {
     return { session: session ?? null };
   }
 
+    @Get('last')
+  async getLastCompletedSession(@CurrentUserId() userId: number) {
+    const session = await this.workoutsService.getLastCompletedSession(userId);
+    return { session: session ?? null };
+  }
+
 
   @Post('start')
   start(@CurrentUserId() userId: number, @Body() dto: StartWorkoutSessionDto) {
