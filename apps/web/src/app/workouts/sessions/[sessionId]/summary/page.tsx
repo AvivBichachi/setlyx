@@ -108,12 +108,15 @@ export default function SessionSummaryPage() {
             >
               Refresh
             </button>
-            <Link
-              href="/programs"
-              className="rounded-md bg-zinc-800 border border-zinc-700 px-4 py-2 hover:bg-zinc-700"
-            >
-              Back to Programs
-            </Link>
+            <div className="flex gap-2">
+              <Link href="/home" className="rounded-md bg-zinc-800 border border-zinc-700 px-4 py-2 hover:bg-zinc-700">
+                Home
+              </Link>
+              <Link href="/programs" className="rounded-md bg-zinc-800 border border-zinc-700 px-4 py-2 hover:bg-zinc-700">
+                Programs
+              </Link>
+            </div>
+
           </div>
         </div>
 

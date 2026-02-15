@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth';
+import Link from 'next/link';
+
 
 type ActiveSession = {
     id: number;
@@ -76,6 +78,12 @@ export default function ProgramsStartResumePage() {
         <main className="min-h-screen bg-zinc-900 text-zinc-100 px-6 py-10">
             <div className="max-w-3xl mx-auto space-y-6">
                 <h1 className="text-3xl font-bold">Programs — Start/Resume (Test UI)</h1>
+
+                <div className="flex gap-2">
+                    <Link href="/home" className="rounded-md bg-zinc-800 border border-zinc-700 px-4 py-2 hover:bg-zinc-700">
+                        Home
+                    </Link>
+                </div>
 
                 {error && <p className="text-red-400 text-sm">{error}</p>}
 

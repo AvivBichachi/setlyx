@@ -4,6 +4,8 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { clearToken, getToken, setToken } from '@/lib/auth';
+import { useRouter } from 'next/navigation';
+
 
 type Program = { id: number; name: string; type: string; isActive?: boolean };
 
@@ -14,9 +16,15 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingPrograms, setLoadingPrograms] = useState(false);
 
+  const router = useRouter();
+
+
   useEffect(() => {
-    setTok(getToken());
+    const t = getToken();
+    setTok(t);
+    if (t) router.replace('/home');
   }, []);
+
 
   async function devLogin() {
     setError(null);
@@ -28,6 +36,9 @@ export default function HomePage() {
 
       setToken(res.accessToken);
       setTok(res.accessToken);
+
+      router.push('/home');
+
     } catch (e: any) {
       setError(e?.message ?? 'Login failed');
     }
@@ -55,7 +66,6 @@ export default function HomePage() {
 
   useEffect(() => {
     if (token) loadPrograms();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return (
@@ -95,7 +105,7 @@ export default function HomePage() {
 
             <button
               className="rounded-md bg-zinc-100 text-zinc-900 px-4 py-2 font-semibold hover:bg-white"
-              onClick={() => (window.location.href = '/programs')}
+              onClick={() => router.push('/programs')}
             >
               Go to Start/Resume
             </button>
