@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, WorkoutSet } from '@prisma/client';
+import { MuscleGroup, Prisma, WorkoutSet } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StartWorkoutSessionDto } from './dto/start-workout-session.dto';
 import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
@@ -338,11 +338,34 @@ export class WorkoutsService {
       topSet: TopSet | null;
     };
 
+    type MuscleAgg = {
+      muscle: MuscleGroup;
+      totalSets: number;
+      totalReps: number;
+      totalVolume: number;
+    };
+
     const byExercise = new Map<number, ExerciseAgg>();
+    const byMuscle = new Map<MuscleGroup, MuscleAgg>();
+
 
     for (const s of sets) {
       const ex = s.dayExercise.exercise;
+      const muscle = ex.primaryMuscle;
       const volume = s.reps * s.weight;
+
+      const m = byMuscle.get(muscle) ?? {
+        muscle,
+        totalSets: 0,
+        totalReps: 0,
+        totalVolume: 0,
+      };
+
+      m.totalSets += 1;
+      m.totalReps += s.reps;
+      m.totalVolume += volume;
+
+      byMuscle.set(muscle, m);
 
       totalSets += 1;
       totalReps += s.reps;
@@ -452,12 +475,18 @@ export class WorkoutsService {
       });
     }
 
+    const muscleTotals = Array.from(byMuscle.values()).sort((a, b) =>
+      a.muscle.localeCompare(b.muscle),
+    );
+
+
     return {
       sessionId: session.id,
       startedAt: session.startedAt,
       endedAt: session.endedAt,
       durationSeconds,
       totals: { totalSets, totalReps, totalVolume },
+      muscleTotals,
       exercises,
     };
   }
