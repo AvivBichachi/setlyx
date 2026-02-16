@@ -306,36 +306,53 @@ export class WorkoutsService {
         weight: true,
         dayExerciseId: true,
         dayExercise: {
-          select: { exercise: { select: { id: true, name: true, primaryMuscle: true } } }
+          select: {
+            exercise: { select: { id: true, name: true, primaryMuscle: true } },
+          },
         },
       },
     });
 
-    const durationSeconds =
-      session.endedAt
-        ? Math.floor(
-          (session.endedAt.getTime() - session.startedAt.getTime()) / 1000,
-        )
-        : null;
+    const durationSeconds = session.endedAt
+      ? Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000)
+      : null;
 
     let totalSets = 0;
     let totalReps = 0;
     let totalVolume = 0;
 
-    type TopSet = { weight: number; reps: number };
-    type ProgressState =
-      | 'IMPROVED'
-      | 'REGRESSED'
-      | 'SAME'
-      | 'NO_BASELINE';
+    // ---- Strength signal config ----
+    const STRENGTH_REPS_MIN = 3;
+    const STRENGTH_REPS_MAX = 12;
+    const EPS = 0.1; // float tolerance for e1RM comparisons
+
+    // ---- Hypertrophy/workload signal config ----
+    // For volume: treat tiny swings as SAME, so UI doesn't flicker.
+    const VOLUME_SAME_PCT = 0.02; // ±2% => SAME
+
+    const epleyE1rm = (w: number, r: number) => w * (1 + r / 30);
+    const isStrengthEligible = (w: number, r: number) =>
+      w > 0 && r >= STRENGTH_REPS_MIN && r <= STRENGTH_REPS_MAX;
+
+    type ProgressState = 'IMPROVED' | 'REGRESSED' | 'SAME' | 'NO_BASELINE';
+
+    type BestE1rmSet = {
+      setId: number;
+      weight: number;
+      reps: number;
+      e1rm: number;
+    };
 
     type ExerciseAgg = {
       exerciseId: number;
       name: string;
+      primaryMuscle: MuscleGroup;
       sets: number;
       repsTotal: number;
       volume: number;
-      topSet: TopSet | null;
+
+      // strength
+      bestE1rmSet: BestE1rmSet | null;
     };
 
     type MuscleAgg = {
@@ -348,12 +365,23 @@ export class WorkoutsService {
     const byExercise = new Map<number, ExerciseAgg>();
     const byMuscle = new Map<MuscleGroup, MuscleAgg>();
 
+    // Comparator: pick "best" strength set
+    const isBetterStrength = (a: BestE1rmSet, b: BestE1rmSet) =>
+      a.e1rm > b.e1rm + EPS ||
+      (Math.abs(a.e1rm - b.e1rm) <= EPS && a.weight > b.weight) ||
+      (Math.abs(a.e1rm - b.e1rm) <= EPS && a.weight === b.weight && a.reps > b.reps) ||
+      (Math.abs(a.e1rm - b.e1rm) <= EPS &&
+        a.weight === b.weight &&
+        a.reps === b.reps &&
+        a.setId > b.setId);
 
+    // ----- CURRENT session aggregation -----
     for (const s of sets) {
       const ex = s.dayExercise.exercise;
       const muscle = ex.primaryMuscle;
       const volume = s.reps * s.weight;
 
+      // muscle totals (hypertrophy/workload signal)
       const m = byMuscle.get(muscle) ?? {
         muscle,
         totalSets: 0,
@@ -364,38 +392,46 @@ export class WorkoutsService {
       m.totalSets += 1;
       m.totalReps += s.reps;
       m.totalVolume += volume;
-
       byMuscle.set(muscle, m);
 
+      // session totals
       totalSets += 1;
       totalReps += s.reps;
       totalVolume += volume;
 
+      // per-exercise aggregation
       const curr = byExercise.get(ex.id) ?? {
         exerciseId: ex.id,
         name: ex.name,
+        primaryMuscle: ex.primaryMuscle,
         sets: 0,
         repsTotal: 0,
         volume: 0,
-        topSet: null,
+        bestE1rmSet: null,
       };
 
       curr.sets += 1;
       curr.repsTotal += s.reps;
       curr.volume += volume;
 
-      if (
-        curr.topSet === null ||
-        s.weight > curr.topSet.weight ||
-        (s.weight === curr.topSet.weight && s.reps > curr.topSet.reps)
-      ) {
-        curr.topSet = { weight: s.weight, reps: s.reps };
+      // strength: best e1RM set in range
+      if (isStrengthEligible(s.weight, s.reps)) {
+        const cand: BestE1rmSet = {
+          setId: s.id,
+          weight: s.weight,
+          reps: s.reps,
+          e1rm: Number(epleyE1rm(s.weight, s.reps).toFixed(1)),
+        };
+
+        if (curr.bestE1rmSet === null || isBetterStrength(cand, curr.bestE1rmSet)) {
+          curr.bestE1rmSet = cand;
+        }
       }
 
       byExercise.set(ex.id, curr);
     }
 
-    // 🔎 Find previous session of the same ProgramDay
+    // ----- PREVIOUS session lookup (same ProgramDay) -----
     const previousSession = await this.prisma.workoutSession.findFirst({
       where: {
         userId,
@@ -406,90 +442,229 @@ export class WorkoutsService {
       select: { id: true },
     });
 
+    const exerciseIds = Array.from(byExercise.keys());
+
+    // Strength baseline
+    const prevBestByExerciseId = new Map<number, BestE1rmSet>();
+
+    // Hypertrophy/workload baselines (volume totals)
+    const prevVolumeByExerciseId = new Map<number, number>();
+    const prevMuscleTotals = new Map<MuscleGroup, MuscleAgg>();
+
+    if (previousSession && exerciseIds.length > 0) {
+      // Pull ALL sets for those exercises in previous session (for volume + muscle totals)
+      const prevAllSets = await this.prisma.workoutSet.findMany({
+        where: {
+          sessionId: previousSession.id,
+          dayExercise: { exerciseId: { in: exerciseIds } },
+          weight: { gt: 0 },
+          reps: { gt: 0 },
+        },
+        select: {
+          id: true,
+          weight: true,
+          reps: true,
+          dayExercise: {
+            select: {
+              exerciseId: true,
+              exercise: { select: { primaryMuscle: true } },
+            },
+          },
+        },
+      });
+
+      // Pull eligible sets for strength (could also filter from prevAllSets, but this keeps intent clear)
+      const prevStrengthSets = prevAllSets.filter((ps) =>
+        isStrengthEligible(ps.weight, ps.reps),
+      );
+
+      // 1) Strength baseline: best e1RM per exercise
+      for (const ps of prevStrengthSets) {
+        const exId = ps.dayExercise.exerciseId;
+        const cand: BestE1rmSet = {
+          setId: ps.id,
+          weight: ps.weight,
+          reps: ps.reps,
+          e1rm: Number(epleyE1rm(ps.weight, ps.reps).toFixed(1)),
+        };
+
+        const existing = prevBestByExerciseId.get(exId);
+        if (!existing || isBetterStrength(cand, existing)) {
+          prevBestByExerciseId.set(exId, cand);
+        }
+      }
+
+      // 2) Hypertrophy baseline: total volume per exercise + per muscle
+      for (const ps of prevAllSets) {
+        const exId = ps.dayExercise.exerciseId;
+        const muscle = ps.dayExercise.exercise.primaryMuscle;
+        const vol = ps.weight * ps.reps;
+
+        prevVolumeByExerciseId.set(exId, (prevVolumeByExerciseId.get(exId) ?? 0) + vol);
+
+        const m = prevMuscleTotals.get(muscle) ?? {
+          muscle,
+          totalSets: 0,
+          totalReps: 0,
+          totalVolume: 0,
+        };
+
+        m.totalSets += 1;
+        m.totalReps += ps.reps;
+        m.totalVolume += vol;
+        prevMuscleTotals.set(muscle, m);
+      }
+    }
+
+    const classifyByPct = (current: number, previous: number): ProgressState => {
+      if (previous <= 0) return 'NO_BASELINE';
+      const pct = (current - previous) / previous;
+      if (pct > VOLUME_SAME_PCT) return 'IMPROVED';
+      if (pct < -VOLUME_SAME_PCT) return 'REGRESSED';
+      return 'SAME';
+    };
+
     type ExerciseSummary = {
       exerciseId: number;
       name: string;
+      primaryMuscle: MuscleGroup;
       sets: number;
       repsTotal: number;
-      volume: number;
-      currentTopSet: TopSet | null;
-      previousTopSet: TopSet | null;
-      progress: ProgressState;
-    };
 
+      // hypertrophy/workload signal (exercise-level)
+      currentVolume: number;
+      previousVolume: number | null;
+      volumeDelta: number | null;
+      volumeDeltaPct: number | null;
+      hypertrophyProgress: ProgressState;
+
+      // strength signal (exercise-level)
+      currentBestE1rmSet: BestE1rmSet | null;
+      previousBestE1rmSet: BestE1rmSet | null;
+      strengthProgress: ProgressState;
+    };
 
     const exercises: ExerciseSummary[] = [];
 
     for (const curr of byExercise.values()) {
-      let previousTopSet: TopSet | null = null;
-      let progress: ProgressState = 'NO_BASELINE';
+      // ---- Strength progress ----
+      const prevStrength = prevBestByExerciseId.get(curr.exerciseId) ?? null;
 
-      if (previousSession && curr.topSet) {
-        const prevSet = await this.prisma.workoutSet.findFirst({
-          where: {
-            sessionId: previousSession.id,
-            dayExercise: { exerciseId: curr.exerciseId },
-          },
-          orderBy: [
-            { weight: 'desc' },
-            { reps: 'desc' },
-            { setNumber: 'desc' },
-            { id: 'desc' },
-          ],
-          select: { weight: true, reps: true },
-        });
+      let strengthProgress: ProgressState = 'NO_BASELINE';
+      if (curr.bestE1rmSet && prevStrength) {
+        const diff = curr.bestE1rmSet.e1rm - prevStrength.e1rm;
+        if (diff > EPS) strengthProgress = 'IMPROVED';
+        else if (diff < -EPS) strengthProgress = 'REGRESSED';
+        else strengthProgress = 'SAME';
+      }
 
-        if (prevSet) {
-          previousTopSet = {
-            weight: prevSet.weight,
-            reps: prevSet.reps,
-          };
+      // ---- Hypertrophy/workload progress ----
+      const prevVol = prevVolumeByExerciseId.get(curr.exerciseId);
+      const previousVolume = prevVol !== undefined ? Number(prevVol.toFixed(1)) : null;
 
-          if (curr.topSet.weight > prevSet.weight) {
-            progress = 'IMPROVED';
-          } else if (
-            curr.topSet.weight === prevSet.weight &&
-            curr.topSet.reps > prevSet.reps
-          ) {
-            progress = 'IMPROVED';
-          } else if (
-            curr.topSet.weight === prevSet.weight &&
-            curr.topSet.reps === prevSet.reps
-          ) {
-            progress = 'SAME';
-          } else {
-            progress = 'REGRESSED';
-          }
-        }
+      let hypertrophyProgress: ProgressState = 'NO_BASELINE';
+      let volumeDelta: number | null = null;
+      let volumeDeltaPct: number | null = null;
+
+      if (previousVolume !== null && previousVolume > 0) {
+        volumeDelta = Number((curr.volume - previousVolume).toFixed(1));
+        volumeDeltaPct = Number((((curr.volume - previousVolume) / previousVolume) * 100).toFixed(1));
+        hypertrophyProgress = classifyByPct(curr.volume, previousVolume);
       }
 
       exercises.push({
         exerciseId: curr.exerciseId,
         name: curr.name,
+        primaryMuscle: curr.primaryMuscle,
         sets: curr.sets,
         repsTotal: curr.repsTotal,
-        volume: curr.volume,
-        currentTopSet: curr.topSet,
-        previousTopSet,
-        progress,
+
+        currentVolume: Number(curr.volume.toFixed(1)),
+        previousVolume,
+        volumeDelta,
+        volumeDeltaPct,
+        hypertrophyProgress,
+
+        currentBestE1rmSet: curr.bestE1rmSet,
+        previousBestE1rmSet: prevStrength,
+        strengthProgress,
       });
     }
 
-    const muscleTotals = Array.from(byMuscle.values()).sort((a, b) =>
-      a.muscle.localeCompare(b.muscle),
-    );
+    exercises.sort((a, b) => a.exerciseId - b.exerciseId);
 
+    type MuscleSummary = {
+      muscle: MuscleGroup;
+
+      currentTotalSets: number;
+      currentTotalReps: number;
+      currentTotalVolume: number;
+
+      previousTotalSets: number | null;
+      previousTotalReps: number | null;
+      previousTotalVolume: number | null;
+
+      volumeDelta: number | null;
+      volumeDeltaPct: number | null;
+      hypertrophyProgress: ProgressState;
+    };
+
+    const muscleTotals: MuscleSummary[] = Array.from(byMuscle.values())
+      .map((m) => {
+        const prev = prevMuscleTotals.get(m.muscle);
+
+        const previousTotalSets = prev ? prev.totalSets : null;
+        const previousTotalReps = prev ? prev.totalReps : null;
+        const previousTotalVolume = prev ? Number(prev.totalVolume.toFixed(1)) : null;
+
+        let hypertrophyProgress: ProgressState = 'NO_BASELINE';
+        let volumeDelta: number | null = null;
+        let volumeDeltaPct: number | null = null;
+
+        if (previousTotalVolume !== null && previousTotalVolume > 0) {
+          volumeDelta = Number((m.totalVolume - previousTotalVolume).toFixed(1));
+          volumeDeltaPct = Number((((m.totalVolume - previousTotalVolume) / previousTotalVolume) * 100).toFixed(1));
+          hypertrophyProgress = classifyByPct(m.totalVolume, previousTotalVolume);
+        }
+
+        return {
+          muscle: m.muscle,
+
+          currentTotalSets: m.totalSets,
+          currentTotalReps: m.totalReps,
+          currentTotalVolume: Number(m.totalVolume.toFixed(1)),
+
+          previousTotalSets,
+          previousTotalReps,
+          previousTotalVolume,
+
+          volumeDelta,
+          volumeDeltaPct,
+          hypertrophyProgress,
+        };
+      })
+      .sort((a, b) => a.muscle.localeCompare(b.muscle));
 
     return {
       sessionId: session.id,
       startedAt: session.startedAt,
       endedAt: session.endedAt,
       durationSeconds,
-      totals: { totalSets, totalReps, totalVolume },
+      totals: {
+        totalSets,
+        totalReps,
+        totalVolume: Number(totalVolume.toFixed(1)),
+      },
+
+      // hypertrophy/workload signal (muscle-level + deltas)
       muscleTotals,
+
+      // both signals (exercise-level)
       exercises,
     };
   }
+
+
 
 
   async getSetDefaults(userId: number, sessionId: number, dayExerciseId: number) {
