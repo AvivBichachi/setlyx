@@ -1,4 +1,4 @@
-import { PrismaClient, ProgramType } from '@prisma/client';
+import { PrismaClient, ProgramType, MuscleGroup } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -41,22 +41,23 @@ async function main() {
   });
 
   // 5) Exercises
-  const exNames = [
-    'Hip Thrust',
-    'Romanian Deadlift',
-    'Bulgarian Split Squat',
-    'Lat Pulldown',
-    'Dumbbell Row',
-    'Shoulder Press',
-  ];
+  const exSeed = [
+    { name: 'Hip Thrust', primaryMuscle: MuscleGroup.GLUTES },
+    { name: 'Romanian Deadlift', primaryMuscle: MuscleGroup.HAMSTRINGS },
+    { name: 'Bulgarian Split Squat', primaryMuscle: MuscleGroup.QUADS },
+    { name: 'Lat Pulldown', primaryMuscle: MuscleGroup.BACK },
+    { name: 'Dumbbell Row', primaryMuscle: MuscleGroup.BACK },
+    { name: 'Shoulder Press', primaryMuscle: MuscleGroup.SHOULDERS },
+  ] as const;
 
   const exercises = await Promise.all(
-    exNames.map((name) =>
+    exSeed.map((ex) =>
       prisma.exercise.create({
-        data: { name },
+        data: { name: ex.name, primaryMuscle: ex.primaryMuscle },
       }),
     ),
   );
+
 
   const byName = new Map(exercises.map((e) => [e.name, e.id] as const));
 

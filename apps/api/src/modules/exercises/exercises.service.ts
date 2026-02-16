@@ -18,7 +18,7 @@ type ProgressQuery = {
 
 @Injectable()
 export class ExercisesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private normalizeName(name: string): string {
     return name.trim();
@@ -26,10 +26,12 @@ export class ExercisesService {
 
   async create(dto: CreateExerciseDto): Promise<Exercise> {
     const name = this.normalizeName(dto.name);
+    const primaryMuscle = dto.primaryMuscle;
+
 
     try {
       return await this.prisma.exercise.create({
-        data: { name },
+        data: { name, primaryMuscle },
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -56,10 +58,16 @@ export class ExercisesService {
   async update(id: number, dto: UpdateExerciseDto): Promise<Exercise> {
     await this.findOne(id);
 
+    if (!dto.name) {
+      throw new BadRequestException('Nothing to update');
+    }
+
+    const name = this.normalizeName(dto.name);
+
     try {
       return await this.prisma.exercise.update({
         where: { id },
-        data: dto.name ? { name: this.normalizeName(dto.name) } : {},
+        data: { name },
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -68,6 +76,7 @@ export class ExercisesService {
       throw e;
     }
   }
+
 
   async remove(id: number): Promise<void> {
     await this.findOne(id);
@@ -78,7 +87,7 @@ export class ExercisesService {
     // 1) validate exercise exists
     const exercise = await this.prisma.exercise.findUnique({
       where: { id: exerciseId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, primaryMuscle: true },
     });
     if (!exercise) throw new NotFoundException('Exercise not found');
 
@@ -174,11 +183,11 @@ export class ExercisesService {
 
     const bestWeightSet = bestWeightRow
       ? {
-          weight: bestWeightRow.weight,
-          reps: bestWeightRow.reps,
-          performedAt: bestWeightRow.createdAt,
-          sessionId: bestWeightRow.sessionId,
-        }
+        weight: bestWeightRow.weight,
+        reps: bestWeightRow.reps,
+        performedAt: bestWeightRow.createdAt,
+        sessionId: bestWeightRow.sessionId,
+      }
       : null;
 
     // best volume set: compute exact max(reps * weight) in TS

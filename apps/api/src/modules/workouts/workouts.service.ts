@@ -89,7 +89,7 @@ export class WorkoutsService {
           include: {
             dayExercise: {
               include: {
-                exercise: { select: { id: true, name: true } },
+                exercise: { select: { id: true, name: true, primaryMuscle: true } },
               },
             },
           },
@@ -245,7 +245,7 @@ export class WorkoutsService {
     const plannedExercises = await this.prisma.dayExercise.findMany({
       where: { programDayId: session.programDayId },
       orderBy: { order: 'asc' },
-      include: { exercise: { select: { id: true, name: true } } },
+      include: { exercise: { select: { id: true, name: true, primaryMuscle: true } } },
     });
 
     const performedSets = await this.prisma.workoutSet.findMany({
@@ -306,7 +306,7 @@ export class WorkoutsService {
         weight: true,
         dayExerciseId: true,
         dayExercise: {
-          select: { exercise: { select: { id: true, name: true } } },
+          select: { exercise: { select: { id: true, name: true, primaryMuscle: true } } }
         },
       },
     });

@@ -47,6 +47,8 @@ model ProgramDay {
 model Exercise {
   id        Int           @id @default(autoincrement())
   name      String        @unique
+  primaryMuscle MuscleGroup
+
   exercises DayExercise[]
 }
 
@@ -71,6 +73,20 @@ enum ProgramType {
   FULL_BODY
   CUSTOM
 }
+
+enum MuscleGroup {
+  CHEST
+  BACK
+  SHOULDERS
+  BICEPS
+  TRICEPS
+  QUADS
+  HAMSTRINGS
+  GLUTES
+  CALVES
+  ABS
+}
+
 
 model WorkoutSession {
   id           Int        @id @default(autoincrement())
