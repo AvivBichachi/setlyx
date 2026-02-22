@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -16,14 +16,23 @@ type ActiveSession = {
 
 type ProgramType = 'AB' | 'PPL' | 'FULL_BODY' | 'CUSTOM';
 
-type Program = {
+type ProgramDay = {
+  id: number;
+  name: string;
+  order: number;
+};
+
+type ProgramApi = {
   id: number;
   name: string;
   type: ProgramType;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
+  days?: ProgramDay[];
 };
+
+type Program = ProgramApi & { days: ProgramDay[] };
 
 type ProgramEditor = {
   name: string;
@@ -39,6 +48,10 @@ function formatProgramType(type: ProgramType) {
   return type;
 }
 
+function normalizeProgram(program: ProgramApi): Program {
+  return { ...program, days: [...(program.days ?? [])].sort((a, b) => a.order - b.order) };
+}
+
 export default function ProgramsPage() {
   const router = useRouter();
 
@@ -47,7 +60,7 @@ export default function ProgramsPage() {
   const [activeSession, setActiveSession] = useState<ActiveSession>(null);
   const [programs, setPrograms] = useState<Program[]>([]);
 
-  const [programDayId, setProgramDayId] = useState<number>(1);
+  const [selectedProgramDayId, setSelectedProgramDayId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [createName, setCreateName] = useState('');
@@ -69,11 +82,12 @@ export default function ProgramsPage() {
 
       const [activeRes, programsRes] = await Promise.all([
         apiFetch<{ session: ActiveSession }>('/workouts/sessions/active', { token }),
-        apiFetch<Program[]>('/programs', { token }),
+        apiFetch<ProgramApi[]>('/programs', { token }),
       ]);
 
+      const nextPrograms = programsRes.map(normalizeProgram);
       setActiveSession(activeRes.session);
-      setPrograms(programsRes);
+      setPrograms(nextPrograms);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load programs page');
     } finally {
@@ -85,7 +99,26 @@ export default function ProgramsPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!activeProgram) {
+      setSelectedProgramDayId(null);
+      return;
+    }
+
+    setSelectedProgramDayId((prev) => {
+      if (prev !== null && activeProgram.days.some((d) => d.id === prev)) {
+        return prev;
+      }
+      return null;
+    });
+  }, [activeProgram]);
+
   async function onStartWorkout() {
+    if (selectedProgramDayId === null) {
+      setError('Please choose a program day first.');
+      return;
+    }
+
     setError(null);
 
     try {
@@ -95,7 +128,7 @@ export default function ProgramsPage() {
       const session = await apiFetch<NonNullable<ActiveSession>>('/workouts/sessions/start', {
         method: 'POST',
         token,
-        body: JSON.stringify({ programDayId }),
+        body: JSON.stringify({ programDayId: selectedProgramDayId }),
       });
 
       setActiveSession(session);
@@ -125,7 +158,7 @@ export default function ProgramsPage() {
       const token = getToken();
       if (!token) throw new Error('Please login first (go to /)');
 
-      const created = await apiFetch<Program>('/programs', {
+      const createdRaw = await apiFetch<ProgramApi>('/programs', {
         method: 'POST',
         token,
         body: JSON.stringify({
@@ -134,6 +167,7 @@ export default function ProgramsPage() {
           isActive: createIsActive,
         }),
       });
+      const created = normalizeProgram(createdRaw);
 
       setCreateName('');
       setCreateType('CUSTOM');
@@ -184,7 +218,7 @@ export default function ProgramsPage() {
       const token = getToken();
       if (!token) throw new Error('Please login first (go to /)');
 
-      const updated = await apiFetch<Program>(`/programs/${programId}`, {
+      const updatedRaw = await apiFetch<ProgramApi>(`/programs/${programId}`, {
         method: 'PATCH',
         token,
         body: JSON.stringify({
@@ -193,9 +227,15 @@ export default function ProgramsPage() {
           isActive: editor.isActive,
         }),
       });
+      const updated = normalizeProgram(updatedRaw);
 
       setPrograms((prev) => {
-        const mapped = prev.map((p) => (p.id === programId ? { ...p, ...updated } : p));
+        const mapped = prev.map((p) =>
+          p.id === programId
+            ? { ...p, ...updated, days: updated.days.length > 0 ? updated.days : p.days }
+            : p,
+        );
+
         if (!updated.isActive) return mapped;
         return mapped.map((p) => (p.id === programId ? p : { ...p, isActive: false }));
       });
@@ -216,7 +256,7 @@ export default function ProgramsPage() {
       const token = getToken();
       if (!token) throw new Error('Please login first (go to /)');
 
-      await apiFetch<Program>(`/programs/${programId}`, {
+      await apiFetch<ProgramApi>(`/programs/${programId}`, {
         method: 'PATCH',
         token,
         body: JSON.stringify({ isActive: true }),
@@ -257,7 +297,9 @@ export default function ProgramsPage() {
                   Active program: {activeProgram.name}
                 </span>
               ) : (
-                <span className="rounded-full border border-zinc-600 px-3 py-1 text-xs text-zinc-300">No active program</span>
+                <span className="rounded-full border border-zinc-600 px-3 py-1 text-xs text-zinc-300">
+                  No active program
+                </span>
               )}
             </div>
 
@@ -274,25 +316,46 @@ export default function ProgramsPage() {
                 </button>
               </div>
             ) : (
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-sm text-zinc-400">Program day id (temporary)</span>
-                  <input
-                    className="w-44 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
-                    type="number"
-                    min={1}
-                    value={programDayId}
-                    onChange={(e) => setProgramDayId(Number(e.target.value))}
-                  />
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span className="text-sm text-zinc-400">Program day</span>
+                  <select
+                    className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none disabled:opacity-60"
+                    value={selectedProgramDayId ?? ''}
+                    onChange={(e) => setSelectedProgramDayId(Number(e.target.value))}
+                    disabled={!activeProgram || activeProgram.days.length === 0}
+                  >
+                    <option value="" disabled>
+                      {activeProgram ? 'Select program day' : 'Set an active program first'}
+                    </option>
+                    {activeProgram?.days.map((day) => (
+                      <option key={day.id} value={day.id}>
+                        #{day.order} — {day.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
-                <button
-                  className="rounded-md bg-zinc-100 px-4 py-2 font-semibold text-zinc-900 hover:bg-white"
-                  onClick={onStartWorkout}
-                  disabled={saving}
-                >
-                  Start workout
-                </button>
+                <div className="flex items-end">
+                  <button
+                    className="w-full rounded-md bg-zinc-100 px-4 py-2 font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
+                    onClick={onStartWorkout}
+                    disabled={saving || selectedProgramDayId === null}
+                  >
+                    Start workout
+                  </button>
+                </div>
+
+                {!activeProgram && (
+                  <p className="text-sm text-amber-300 md:col-span-3">
+                    Set one program as active before starting a workout.
+                  </p>
+                )}
+                {activeProgram && activeProgram.days.length === 0 && (
+                  <p className="text-sm text-amber-300 md:col-span-3">
+                    Active program has no days yet. Add ProgramDays before starting a workout.
+                  </p>
+                )}
               </div>
             )}
           </section>
@@ -361,9 +424,7 @@ export default function ProgramsPage() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-semibold">
-                              {isEditing ? editor.name : program.name}
-                            </h3>
+                            <h3 className="text-lg font-semibold">{isEditing ? editor.name : program.name}</h3>
                             {program.isActive && (
                               <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300">
                                 Active
@@ -424,7 +485,9 @@ export default function ProgramsPage() {
                             <input
                               className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 outline-none"
                               value={editor.name}
-                              onChange={(e) => setEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+                              onChange={(e) =>
+                                setEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                              }
                             />
                           </label>
 
@@ -473,3 +536,4 @@ export default function ProgramsPage() {
     </AppShell>
   );
 }
+
