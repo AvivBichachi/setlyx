@@ -13,6 +13,7 @@ import { CurrentUserId } from '../../common/current-user-id.decorator';
 import { DayExercisesService } from './day-exercises.service';
 import { CreateDayExerciseDto } from './dto/create-day-exercise.dto';
 import { UpdateDayExerciseDto } from './dto/update-day-exercise.dto';
+import { ReorderDayExercisesDto } from './dto/reorder-day-exercises.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -46,7 +47,12 @@ export class DayExercisesController {
     @Param('dayId', ParseIntPipe) dayId: number,
     @Param('dayExerciseId', ParseIntPipe) dayExerciseId: number,
   ) {
-    return this.dayExercisesService.findOne(userId, programId, dayId, dayExerciseId);
+    return this.dayExercisesService.findOne(
+      userId,
+      programId,
+      dayId,
+      dayExerciseId,
+    );
   }
 
   @Patch(':dayExerciseId')
@@ -57,7 +63,23 @@ export class DayExercisesController {
     @Param('dayExerciseId', ParseIntPipe) dayExerciseId: number,
     @Body() dto: UpdateDayExerciseDto,
   ) {
-    return this.dayExercisesService.update(userId, programId, dayId, dayExerciseId, dto);
+    return this.dayExercisesService.update(
+      userId,
+      programId,
+      dayId,
+      dayExerciseId,
+      dto,
+    );
+  }
+
+  @Post('reorder')
+  reorder(
+    @CurrentUserId() userId: number,
+    @Param('programId', ParseIntPipe) programId: number,
+    @Param('dayId', ParseIntPipe) dayId: number,
+    @Body() dto: ReorderDayExercisesDto,
+  ) {
+    return this.dayExercisesService.reorder(userId, programId, dayId, dto);
   }
 
   @Delete(':dayExerciseId')
@@ -67,7 +89,12 @@ export class DayExercisesController {
     @Param('dayId', ParseIntPipe) dayId: number,
     @Param('dayExerciseId', ParseIntPipe) dayExerciseId: number,
   ) {
-    await this.dayExercisesService.remove(userId, programId, dayId, dayExerciseId);
+    await this.dayExercisesService.remove(
+      userId,
+      programId,
+      dayId,
+      dayExerciseId,
+    );
     return { ok: true };
   }
 }

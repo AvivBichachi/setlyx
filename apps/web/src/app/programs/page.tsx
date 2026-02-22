@@ -45,6 +45,35 @@ type ProgramDayEditor = {
   newDayName: string;
 };
 
+type Exercise = {
+  id: number;
+  name: string;
+  primaryMuscle: string;
+};
+
+type DayExercise = {
+  id: number;
+  programDayId: number;
+  exerciseId: number;
+  order: number;
+  targetSets: number;
+  minReps: number;
+  maxReps: number;
+};
+
+type DayExerciseDraft = {
+  targetSets: string;
+  minReps: string;
+  maxReps: string;
+};
+
+type NewDayExerciseDraft = {
+  exerciseId: string;
+  targetSets: string;
+  minReps: string;
+  maxReps: string;
+};
+
 const PROGRAM_TYPES: ProgramType[] = ['AB', 'PPL', 'FULL_BODY', 'CUSTOM'];
 
 function formatProgramType(type: ProgramType) {
@@ -75,8 +104,36 @@ export default function ProgramsPage() {
   const [editingProgramId, setEditingProgramId] = useState<number | null>(null);
   const [editor, setEditor] = useState<ProgramEditor | null>(null);
   const [dayEditor, setDayEditor] = useState<ProgramDayEditor | null>(null);
+  const [exerciseCatalog, setExerciseCatalog] = useState<Exercise[]>([]);
+  const [editingProgramDayId, setEditingProgramDayId] = useState<number | null>(null);
+  const [dayExercises, setDayExercises] = useState<DayExercise[]>([]);
+  const [dayExerciseDrafts, setDayExerciseDrafts] = useState<Record<number, DayExerciseDraft>>({});
+  const [newDayExerciseDraft, setNewDayExerciseDraft] = useState<NewDayExerciseDraft>({
+    exerciseId: '',
+    targetSets: '3',
+    minReps: '8',
+    maxReps: '12',
+  });
 
   const activeProgram = useMemo(() => programs.find((p) => p.isActive) ?? null, [programs]);
+  const editingProgram = useMemo(
+    () => (editingProgramId === null ? null : programs.find((p) => p.id === editingProgramId) ?? null),
+    [editingProgramId, programs],
+  );
+  const exerciseNameById = useMemo(
+    () => Object.fromEntries(exerciseCatalog.map((exercise) => [exercise.id, exercise.name])),
+    [exerciseCatalog],
+  );
+
+  function parsePositiveInt(value: string): number | null {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) return null;
+    return parsed;
+  }
+
+  function validateRepRange(minReps: number, maxReps: number): boolean {
+    return minReps <= maxReps;
+  }
 
   async function loadData() {
     setError(null);
@@ -86,14 +143,16 @@ export default function ProgramsPage() {
       const token = getToken();
       if (!token) throw new Error('Please login first (go to /)');
 
-      const [activeRes, programsRes] = await Promise.all([
+      const [activeRes, programsRes, exercisesRes] = await Promise.all([
         apiFetch<{ session: ActiveSession }>('/workouts/sessions/active', { token }),
         apiFetch<ProgramApi[]>('/programs', { token }),
+        apiFetch<Exercise[]>('/exercises', { token }),
       ]);
 
       const nextPrograms = programsRes.map(normalizeProgram);
       setActiveSession(activeRes.session);
       setPrograms(nextPrograms);
+      setExerciseCatalog(exercisesRes);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load programs page');
     } finally {
@@ -118,6 +177,30 @@ export default function ProgramsPage() {
       return null;
     });
   }, [activeProgram]);
+
+  useEffect(() => {
+    if (!editingProgram) {
+      setEditingProgramDayId(null);
+      return;
+    }
+
+    setEditingProgramDayId((prev) => {
+      if (prev !== null && editingProgram.days.some((day) => day.id === prev)) {
+        return prev;
+      }
+      return editingProgram.days[0]?.id ?? null;
+    });
+  }, [editingProgram]);
+
+  useEffect(() => {
+    if (!editingProgram || editingProgramDayId === null) {
+      setDayExercises([]);
+      setDayExerciseDrafts({});
+      return;
+    }
+
+    loadDayExercises(editingProgram.id, editingProgramDayId);
+  }, [editingProgram, editingProgramDayId]);
 
   async function onStartWorkout() {
     if (selectedProgramDayId === null) {
@@ -211,6 +294,15 @@ export default function ProgramsPage() {
     setEditingProgramId(null);
     setEditor(null);
     setDayEditor(null);
+    setEditingProgramDayId(null);
+    setDayExercises([]);
+    setDayExerciseDrafts({});
+    setNewDayExerciseDraft({
+      exerciseId: '',
+      targetSets: '3',
+      minReps: '8',
+      maxReps: '12',
+    });
   }
 
   function setProgramDays(programId: number, days: ProgramDay[]) {
@@ -223,6 +315,34 @@ export default function ProgramsPage() {
         draftNameByDayId: Object.fromEntries(normalizedDays.map((day) => [day.id, day.name])),
       };
     });
+  }
+
+  async function loadDayExercises(programId: number, dayId: number) {
+    setError(null);
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      const rows = await apiFetch<DayExercise[]>(`/programs/${programId}/days/${dayId}/exercises`, { token });
+      const sorted = rows.slice().sort((a, b) => a.order - b.order);
+      setDayExercises(sorted);
+      setDayExerciseDrafts(
+        Object.fromEntries(
+          sorted.map((row) => [
+            row.id,
+            {
+              targetSets: String(row.targetSets),
+              minReps: String(row.minReps),
+              maxReps: String(row.maxReps),
+            },
+          ]),
+        ),
+      );
+    } catch (e: unknown) {
+      setDayExercises([]);
+      setDayExerciseDrafts({});
+      setError(e instanceof Error ? e.message : 'Failed to load day exercises');
+    }
   }
 
   async function createProgramDay(programId: number) {
@@ -347,6 +467,188 @@ export default function ProgramsPage() {
       setProgramDays(programId, nextDays);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to reorder program days');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createDayExercise(programId: number) {
+    if (editingProgramDayId === null) {
+      setError('Choose a program day first');
+      return;
+    }
+
+    const exerciseId = parsePositiveInt(newDayExerciseDraft.exerciseId);
+    const targetSets = parsePositiveInt(newDayExerciseDraft.targetSets);
+    const minReps = parsePositiveInt(newDayExerciseDraft.minReps);
+    const maxReps = parsePositiveInt(newDayExerciseDraft.maxReps);
+
+    if (!exerciseId || !targetSets || !minReps || !maxReps) {
+      setError('Exercise and target fields must be positive numbers');
+      return;
+    }
+
+    if (!validateRepRange(minReps, maxReps)) {
+      setError('Min reps must be less than or equal to max reps');
+      return;
+    }
+
+    setError(null);
+    setSaving(true);
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      await apiFetch<DayExercise>(`/programs/${programId}/days/${editingProgramDayId}/exercises`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          exerciseId,
+          order: dayExercises.length + 1,
+          targetSets,
+          minReps,
+          maxReps,
+        }),
+      });
+
+      setNewDayExerciseDraft((prev) => ({ ...prev, exerciseId: '' }));
+      await loadDayExercises(programId, editingProgramDayId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to add day exercise');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveDayExercise(programId: number, dayExerciseId: number) {
+    if (editingProgramDayId === null) return;
+    const draft = dayExerciseDrafts[dayExerciseId];
+    if (!draft) return;
+
+    const targetSets = parsePositiveInt(draft.targetSets);
+    const minReps = parsePositiveInt(draft.minReps);
+    const maxReps = parsePositiveInt(draft.maxReps);
+    if (!targetSets || !minReps || !maxReps) {
+      setError('Target fields must be positive numbers');
+      return;
+    }
+    if (!validateRepRange(minReps, maxReps)) {
+      setError('Min reps must be less than or equal to max reps');
+      return;
+    }
+
+    setError(null);
+    setSaving(true);
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      const updated = await apiFetch<DayExercise>(
+        `/programs/${programId}/days/${editingProgramDayId}/exercises/${dayExerciseId}`,
+        {
+          method: 'PATCH',
+          token,
+          body: JSON.stringify({ targetSets, minReps, maxReps }),
+        },
+      );
+
+      setDayExercises((prev) =>
+        prev
+          .map((row) =>
+            row.id === dayExerciseId
+              ? {
+                  ...row,
+                  targetSets: updated.targetSets,
+                  minReps: updated.minReps,
+                  maxReps: updated.maxReps,
+                }
+              : row,
+          )
+          .sort((a, b) => a.order - b.order),
+      );
+      setDayExerciseDrafts((prev) => ({
+        ...prev,
+        [dayExerciseId]: {
+          targetSets: String(updated.targetSets),
+          minReps: String(updated.minReps),
+          maxReps: String(updated.maxReps),
+        },
+      }));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save day exercise');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteDayExercise(programId: number, dayExerciseId: number) {
+    if (editingProgramDayId === null) return;
+
+    setError(null);
+    setSaving(true);
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      await apiFetch<{ ok: true }>(
+        `/programs/${programId}/days/${editingProgramDayId}/exercises/${dayExerciseId}`,
+        {
+          method: 'DELETE',
+          token,
+        },
+      );
+
+      await loadDayExercises(programId, editingProgramDayId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to delete day exercise');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function moveDayExercise(programId: number, dayExerciseId: number, direction: -1 | 1) {
+    if (editingProgramDayId === null) return;
+    const currentIndex = dayExercises.findIndex((row) => row.id === dayExerciseId);
+    if (currentIndex === -1) return;
+
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= dayExercises.length) return;
+
+    const reordered = [...dayExercises];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(nextIndex, 0, moved);
+    const items = reordered.map((row, index) => ({ id: row.id, order: index + 1 }));
+
+    setError(null);
+    setSaving(true);
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      const nextRows = await apiFetch<DayExercise[]>(
+        `/programs/${programId}/days/${editingProgramDayId}/exercises/reorder`,
+        {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ items }),
+        },
+      );
+
+      setDayExercises(nextRows.slice().sort((a, b) => a.order - b.order));
+      setDayExerciseDrafts((prev) => {
+        const nextDrafts: Record<number, DayExerciseDraft> = {};
+        for (const row of nextRows) {
+          nextDrafts[row.id] =
+            prev[row.id] ?? {
+              targetSets: String(row.targetSets),
+              minReps: String(row.minReps),
+              maxReps: String(row.maxReps),
+            };
+        }
+        return nextDrafts;
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to reorder day exercises');
     } finally {
       setSaving(false);
     }
@@ -767,6 +1069,220 @@ export default function ProgramsPage() {
                                     </div>
                                   ))}
                               </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-3 rounded-md border border-zinc-700 bg-zinc-800 p-4">
+                            <h4 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+                              DayExercises
+                            </h4>
+
+                            {program.days.length === 0 ? (
+                              <p className="text-sm text-zinc-400">
+                                Add at least one ProgramDay before configuring exercises.
+                              </p>
+                            ) : (
+                              <>
+                                <label className="flex flex-col gap-1">
+                                  <span className="text-sm text-zinc-400">Edit ProgramDay</span>
+                                  <select
+                                    className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                    value={editingProgramDayId ?? ''}
+                                    onChange={(e) => setEditingProgramDayId(Number(e.target.value))}
+                                    disabled={saving}
+                                  >
+                                    {program.days
+                                      .slice()
+                                      .sort((a, b) => a.order - b.order)
+                                      .map((day) => (
+                                        <option key={day.id} value={day.id}>
+                                          #{day.order} - {day.name}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </label>
+
+                                <div className="grid gap-2 md:grid-cols-[1.2fr,repeat(3,minmax(0,120px)),auto]">
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-sm text-zinc-400">Exercise</span>
+                                    <select
+                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      value={newDayExerciseDraft.exerciseId}
+                                      onChange={(e) =>
+                                        setNewDayExerciseDraft((prev) => ({
+                                          ...prev,
+                                          exerciseId: e.target.value,
+                                        }))
+                                      }
+                                      disabled={saving}
+                                    >
+                                      <option value="">Select exercise</option>
+                                      {exerciseCatalog.map((exercise) => (
+                                        <option key={exercise.id} value={exercise.id}>
+                                          {exercise.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-sm text-zinc-400">Sets</span>
+                                    <input
+                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      inputMode="numeric"
+                                      value={newDayExerciseDraft.targetSets}
+                                      onChange={(e) =>
+                                        setNewDayExerciseDraft((prev) => ({
+                                          ...prev,
+                                          targetSets: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </label>
+
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-sm text-zinc-400">Min reps</span>
+                                    <input
+                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      inputMode="numeric"
+                                      value={newDayExerciseDraft.minReps}
+                                      onChange={(e) =>
+                                        setNewDayExerciseDraft((prev) => ({
+                                          ...prev,
+                                          minReps: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </label>
+
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-sm text-zinc-400">Max reps</span>
+                                    <input
+                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      inputMode="numeric"
+                                      value={newDayExerciseDraft.maxReps}
+                                      onChange={(e) =>
+                                        setNewDayExerciseDraft((prev) => ({
+                                          ...prev,
+                                          maxReps: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </label>
+
+                                  <div className="flex items-end">
+                                    <button
+                                      className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50"
+                                      onClick={() => createDayExercise(program.id)}
+                                      disabled={saving || editingProgramDayId === null}
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {dayExercises.length === 0 ? (
+                                  <p className="text-sm text-zinc-400">No exercises configured for this day.</p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {dayExercises.map((row, index) => (
+                                      <div
+                                        key={row.id}
+                                        className="grid gap-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 md:grid-cols-[70px,1fr,repeat(3,minmax(0,110px)),auto]"
+                                      >
+                                        <div className="text-sm text-zinc-400">#{row.order}</div>
+                                        <div className="text-sm text-zinc-200">
+                                          {exerciseNameById[row.exerciseId] ?? `Exercise #${row.exerciseId}`}
+                                        </div>
+                                        <input
+                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                          inputMode="numeric"
+                                          value={dayExerciseDrafts[row.id]?.targetSets ?? String(row.targetSets)}
+                                          onChange={(e) =>
+                                            setDayExerciseDrafts((prev) => ({
+                                              ...prev,
+                                              [row.id]: {
+                                                ...(prev[row.id] ?? {
+                                                  targetSets: String(row.targetSets),
+                                                  minReps: String(row.minReps),
+                                                  maxReps: String(row.maxReps),
+                                                }),
+                                                targetSets: e.target.value,
+                                              },
+                                            }))
+                                          }
+                                        />
+                                        <input
+                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                          inputMode="numeric"
+                                          value={dayExerciseDrafts[row.id]?.minReps ?? String(row.minReps)}
+                                          onChange={(e) =>
+                                            setDayExerciseDrafts((prev) => ({
+                                              ...prev,
+                                              [row.id]: {
+                                                ...(prev[row.id] ?? {
+                                                  targetSets: String(row.targetSets),
+                                                  minReps: String(row.minReps),
+                                                  maxReps: String(row.maxReps),
+                                                }),
+                                                minReps: e.target.value,
+                                              },
+                                            }))
+                                          }
+                                        />
+                                        <input
+                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                          inputMode="numeric"
+                                          value={dayExerciseDrafts[row.id]?.maxReps ?? String(row.maxReps)}
+                                          onChange={(e) =>
+                                            setDayExerciseDrafts((prev) => ({
+                                              ...prev,
+                                              [row.id]: {
+                                                ...(prev[row.id] ?? {
+                                                  targetSets: String(row.targetSets),
+                                                  minReps: String(row.minReps),
+                                                  maxReps: String(row.maxReps),
+                                                }),
+                                                maxReps: e.target.value,
+                                              },
+                                            }))
+                                          }
+                                        />
+                                        <div className="flex flex-wrap gap-2">
+                                          <button
+                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                            onClick={() => moveDayExercise(program.id, row.id, -1)}
+                                            disabled={saving || index === 0}
+                                          >
+                                            Up
+                                          </button>
+                                          <button
+                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                            onClick={() => moveDayExercise(program.id, row.id, 1)}
+                                            disabled={saving || index === dayExercises.length - 1}
+                                          >
+                                            Down
+                                          </button>
+                                          <button
+                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                            onClick={() => saveDayExercise(program.id, row.id)}
+                                            disabled={saving}
+                                          >
+                                            Save
+                                          </button>
+                                          <button
+                                            className="rounded-md border border-red-500/50 bg-red-500/10 px-2 py-1 text-xs text-red-200 hover:bg-red-500/20 disabled:opacity-50"
+                                            onClick={() => deleteDayExercise(program.id, row.id)}
+                                            disabled={saving}
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
