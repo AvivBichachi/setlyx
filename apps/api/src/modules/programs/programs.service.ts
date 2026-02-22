@@ -8,29 +8,43 @@ import { UpdateProgramDto } from './dto/update-program.dto';
 export class ProgramsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private readonly baseSelect = {
+    id: true,
+    name: true,
+    type: true,
+    isActive: true,
+    createdAt: true,
+    updatedAt: true,
+  } as const;
+
   async create(userId: number, dto: CreateProgramDto) {
-    return this.prisma.program.create({
-      data: {
-        userId,
-        name: dto.name,
-        type: dto.type,
-        isActive: dto.isActive ?? false,
-      },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        isActive: true,
-        createdAt: true,
-      },
+    const shouldBeActive = dto.isActive ?? false;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (shouldBeActive) {
+        await tx.program.updateMany({
+          where: { userId, isActive: true },
+          data: { isActive: false },
+        });
+      }
+
+      return tx.program.create({
+        data: {
+          userId,
+          name: dto.name,
+          type: dto.type,
+          isActive: shouldBeActive,
+        },
+        select: this.baseSelect,
+      });
     });
   }
 
   async findAll(userId: number) {
     return this.prisma.program.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, type: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }],
+      select: this.baseSelect,
     });
   }
 
@@ -76,24 +90,37 @@ export class ProgramsService {
   }
 
   async update(userId: number, id: number, dto: UpdateProgramDto) {
-    // whitelist only (never allow userId ownership changes)
-    const data: Prisma.ProgramUpdateManyMutationInput = {
+    const exists = await this.prisma.program.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+
+    if (!exists) throw new NotFoundException('Program not found');
+
+    const data: Prisma.ProgramUpdateInput = {
       ...(dto.name !== undefined ? { name: dto.name } : {}),
       ...(dto.type !== undefined ? { type: dto.type } : {}),
       ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
     };
 
-    const res = await this.prisma.program.updateMany({
-      where: { id, userId },
-      data,
-    });
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.isActive === true) {
+        await tx.program.updateMany({
+          where: { userId, isActive: true, id: { not: id } },
+          data: { isActive: false },
+        });
+      }
 
-    if (res.count === 0) throw new NotFoundException('Program not found');
+      await tx.program.update({
+        where: { id },
+        data,
+        select: { id: true },
+      });
 
-    // return a clean read shape (avoid leaking raw entity if you prefer)
-    return this.prisma.program.findFirst({
-      where: { id, userId },
-      select: { id: true, name: true, type: true, isActive: true, createdAt: true, updatedAt: true },
+      return tx.program.findFirst({
+        where: { id, userId },
+        select: this.baseSelect,
+      });
     });
   }
 
