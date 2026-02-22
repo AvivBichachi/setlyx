@@ -40,6 +40,11 @@ type ProgramEditor = {
   isActive: boolean;
 };
 
+type ProgramDayEditor = {
+  draftNameByDayId: Record<number, string>;
+  newDayName: string;
+};
+
 const PROGRAM_TYPES: ProgramType[] = ['AB', 'PPL', 'FULL_BODY', 'CUSTOM'];
 
 function formatProgramType(type: ProgramType) {
@@ -69,6 +74,7 @@ export default function ProgramsPage() {
 
   const [editingProgramId, setEditingProgramId] = useState<number | null>(null);
   const [editor, setEditor] = useState<ProgramEditor | null>(null);
+  const [dayEditor, setDayEditor] = useState<ProgramDayEditor | null>(null);
 
   const activeProgram = useMemo(() => programs.find((p) => p.isActive) ?? null, [programs]);
 
@@ -195,11 +201,155 @@ export default function ProgramsPage() {
       type: program.type,
       isActive: program.isActive,
     });
+    setDayEditor({
+      draftNameByDayId: Object.fromEntries(program.days.map((day) => [day.id, day.name])),
+      newDayName: '',
+    });
   }
 
   function cancelEdit() {
     setEditingProgramId(null);
     setEditor(null);
+    setDayEditor(null);
+  }
+
+  function setProgramDays(programId: number, days: ProgramDay[]) {
+    const normalizedDays = [...days].sort((a, b) => a.order - b.order);
+    setPrograms((prev) => prev.map((p) => (p.id === programId ? { ...p, days: normalizedDays } : p)));
+    setDayEditor((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        draftNameByDayId: Object.fromEntries(normalizedDays.map((day) => [day.id, day.name])),
+      };
+    });
+  }
+
+  async function createProgramDay(programId: number) {
+    if (!dayEditor) return;
+    const name = dayEditor.newDayName.trim();
+    if (!name) {
+      setError('Program day name is required');
+      return;
+    }
+
+    const program = programs.find((p) => p.id === programId);
+    if (!program) return;
+
+    setError(null);
+    setSaving(true);
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      const nextOrder = program.days.length + 1;
+      const created = await apiFetch<ProgramDay>(`/programs/${programId}/days`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ name, order: nextOrder }),
+      });
+
+      setProgramDays(programId, [...program.days, created]);
+      setDayEditor((prev) => (prev ? { ...prev, newDayName: '' } : prev));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to create program day');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function renameProgramDay(programId: number, dayId: number) {
+    if (!dayEditor) return;
+    const name = dayEditor.draftNameByDayId[dayId]?.trim();
+    if (!name) {
+      setError('Program day name is required');
+      return;
+    }
+
+    setError(null);
+    setSaving(true);
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      const updated = await apiFetch<ProgramDay>(`/programs/${programId}/days/${dayId}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ name }),
+      });
+
+      const program = programs.find((p) => p.id === programId);
+      if (!program) return;
+      setProgramDays(
+        programId,
+        program.days.map((day) => (day.id === dayId ? { ...day, name: updated.name } : day)),
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to rename program day');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteProgramDay(programId: number, dayId: number) {
+    setError(null);
+    setSaving(true);
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      await apiFetch<{ ok: true }>(`/programs/${programId}/days/${dayId}`, {
+        method: 'DELETE',
+        token,
+      });
+
+      const nextDays = await apiFetch<ProgramDay[]>(`/programs/${programId}/days`, { token });
+      setProgramDays(programId, nextDays);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to delete program day');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function moveProgramDay(programId: number, dayId: number, direction: -1 | 1) {
+    const program = programs.find((p) => p.id === programId);
+    if (!program) return;
+
+    const sortedDays = [...program.days].sort((a, b) => a.order - b.order);
+    const currentIndex = sortedDays.findIndex((day) => day.id === dayId);
+    if (currentIndex === -1) return;
+
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= sortedDays.length) return;
+
+    const reordered = [...sortedDays];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(nextIndex, 0, moved);
+
+    const payload = reordered.map((day, index) => ({ id: day.id, order: index + 1 }));
+
+    setError(null);
+    setSaving(true);
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Please login first (go to /)');
+
+      const nextDays = await apiFetch<ProgramDay[]>(`/programs/${programId}/days/reorder`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ items: payload }),
+      });
+      setProgramDays(programId, nextDays);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to reorder program days');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function saveEdit(programId: number) {
@@ -479,50 +629,146 @@ export default function ProgramsPage() {
                       </div>
 
                       {isEditing && (
-                        <div className="mt-4 grid gap-3 md:grid-cols-3">
-                          <label className="flex flex-col gap-1 md:col-span-2">
-                            <span className="text-sm text-zinc-400">Name</span>
-                            <input
-                              className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 outline-none"
-                              value={editor.name}
-                              onChange={(e) =>
-                                setEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
-                              }
-                            />
-                          </label>
+                        <div className="mt-4 space-y-5">
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <label className="flex flex-col gap-1 md:col-span-2">
+                              <span className="text-sm text-zinc-400">Name</span>
+                              <input
+                                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 outline-none"
+                                value={editor.name}
+                                onChange={(e) =>
+                                  setEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                                }
+                              />
+                            </label>
 
-                          <label className="flex flex-col gap-1">
-                            <span className="text-sm text-zinc-400">Type</span>
-                            <select
-                              className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 outline-none"
-                              value={editor.type}
-                              onChange={(e) =>
-                                setEditor((prev) =>
-                                  prev ? { ...prev, type: e.target.value as ProgramType } : prev,
-                                )
-                              }
-                            >
-                              {PROGRAM_TYPES.map((type) => (
-                                <option key={type} value={type}>
-                                  {formatProgramType(type)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-sm text-zinc-400">Type</span>
+                              <select
+                                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 outline-none"
+                                value={editor.type}
+                                onChange={(e) =>
+                                  setEditor((prev) =>
+                                    prev ? { ...prev, type: e.target.value as ProgramType } : prev,
+                                  )
+                                }
+                              >
+                                {PROGRAM_TYPES.map((type) => (
+                                  <option key={type} value={type}>
+                                    {formatProgramType(type)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
 
-                          <label className="inline-flex items-center gap-2 text-sm text-zinc-300 md:col-span-3">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-zinc-600 bg-zinc-900"
-                              checked={editor.isActive}
-                              onChange={(e) =>
-                                setEditor((prev) =>
-                                  prev ? { ...prev, isActive: e.target.checked } : prev,
-                                )
-                              }
-                            />
-                            Set as active program
-                          </label>
+                            <label className="inline-flex items-center gap-2 text-sm text-zinc-300 md:col-span-3">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-zinc-600 bg-zinc-900"
+                                checked={editor.isActive}
+                                onChange={(e) =>
+                                  setEditor((prev) =>
+                                    prev ? { ...prev, isActive: e.target.checked } : prev,
+                                  )
+                                }
+                              />
+                              Set as active program
+                            </label>
+                          </div>
+
+                          <div className="space-y-3 rounded-md border border-zinc-700 bg-zinc-800 p-4">
+                            <h4 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+                              ProgramDays
+                            </h4>
+
+                            <div className="flex flex-wrap items-end gap-2">
+                              <label className="flex min-w-[220px] flex-1 flex-col gap-1">
+                                <span className="text-sm text-zinc-400">New day name</span>
+                                <input
+                                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                  value={dayEditor?.newDayName ?? ''}
+                                  onChange={(e) =>
+                                    setDayEditor((prev) =>
+                                      prev ? { ...prev, newDayName: e.target.value } : prev,
+                                    )
+                                  }
+                                  placeholder="e.g. Lower A"
+                                />
+                              </label>
+                              <button
+                                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50"
+                                onClick={() => createProgramDay(program.id)}
+                                disabled={saving}
+                              >
+                                Add day
+                              </button>
+                            </div>
+
+                            {program.days.length === 0 ? (
+                              <p className="text-sm text-zinc-400">No days yet.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {program.days
+                                  .slice()
+                                  .sort((a, b) => a.order - b.order)
+                                  .map((day, index, arr) => (
+                                    <div
+                                      key={day.id}
+                                      className="grid gap-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 md:grid-cols-[80px,1fr,auto]"
+                                    >
+                                      <div className="text-sm text-zinc-400">#{day.order}</div>
+                                      <input
+                                        className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none"
+                                        value={dayEditor?.draftNameByDayId[day.id] ?? day.name}
+                                        onChange={(e) =>
+                                          setDayEditor((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  draftNameByDayId: {
+                                                    ...prev.draftNameByDayId,
+                                                    [day.id]: e.target.value,
+                                                  },
+                                                }
+                                              : prev,
+                                          )
+                                        }
+                                      />
+                                      <div className="flex flex-wrap gap-2">
+                                        <button
+                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                          onClick={() => moveProgramDay(program.id, day.id, -1)}
+                                          disabled={saving || index === 0}
+                                        >
+                                          Up
+                                        </button>
+                                        <button
+                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                          onClick={() => moveProgramDay(program.id, day.id, 1)}
+                                          disabled={saving || index === arr.length - 1}
+                                        >
+                                          Down
+                                        </button>
+                                        <button
+                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                          onClick={() => renameProgramDay(program.id, day.id)}
+                                          disabled={saving}
+                                        >
+                                          Rename
+                                        </button>
+                                        <button
+                                          className="rounded-md border border-red-500/50 bg-red-500/10 px-2 py-1 text-xs text-red-200 hover:bg-red-500/20 disabled:opacity-50"
+                                          onClick={() => deleteProgramDay(program.id, day.id)}
+                                          disabled={saving}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </article>

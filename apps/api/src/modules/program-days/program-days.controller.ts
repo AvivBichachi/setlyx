@@ -12,6 +12,7 @@ import {
 import { ProgramDaysService } from './program-days.service';
 import { CreateProgramDayDto } from './dto/create-program-day.dto';
 import { UpdateProgramDayDto } from './dto/update-program-day.dto';
+import { ReorderProgramDaysDto } from './dto/reorder-program-days.dto';
 import { CurrentUserId } from '../../common/current-user-id.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -55,6 +56,15 @@ export class ProgramDaysController {
     @Body() dto: UpdateProgramDayDto,
   ) {
     return this.programDaysService.update(userId, programId, dayId, dto);
+  }
+
+  @Post('reorder')
+  reorder(
+    @CurrentUserId() userId: number,
+    @Param('programId', ParseIntPipe) programId: number,
+    @Body() dto: ReorderProgramDaysDto,
+  ) {
+    return this.programDaysService.reorder(userId, programId, dto);
   }
 
   @Delete(':dayId')
