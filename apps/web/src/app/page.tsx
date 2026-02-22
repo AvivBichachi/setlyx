@@ -39,8 +39,8 @@ export default function HomePage() {
 
       router.push('/home');
 
-    } catch (e: any) {
-      setError(e?.message ?? 'Login failed');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Login failed');
     }
   }
 
@@ -51,8 +51,8 @@ export default function HomePage() {
     try {
       const data = await apiFetch<Program[]>('/programs', { token });
       setPrograms(data);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load programs');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load programs');
     } finally {
       setLoadingPrograms(false);
     }
@@ -140,3 +140,4 @@ export default function HomePage() {
     </main>
   );
 }
+
