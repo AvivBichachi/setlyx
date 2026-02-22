@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProgramDto } from './dto/create-program.dto';
@@ -44,7 +44,17 @@ export class ProgramsService {
     return this.prisma.program.findMany({
       where: { userId },
       orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }],
-      select: this.baseSelect,
+      select: {
+        ...this.baseSelect,
+        days: {
+          orderBy: { order: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            order: true,
+          },
+        },
+      },
     });
   }
 
@@ -132,3 +142,4 @@ export class ProgramsService {
     if (res.count === 0) throw new NotFoundException('Program not found');
   }
 }
+
