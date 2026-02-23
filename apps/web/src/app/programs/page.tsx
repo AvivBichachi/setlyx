@@ -74,6 +74,12 @@ type NewDayExerciseDraft = {
   maxReps: string;
 };
 
+type ParsedDayExerciseTargets = {
+  targetSets: number;
+  minReps: number;
+  maxReps: number;
+};
+
 const PROGRAM_TYPES: ProgramType[] = ['AB', 'PPL', 'FULL_BODY', 'CUSTOM'];
 
 function formatProgramType(type: ProgramType) {
@@ -108,6 +114,8 @@ export default function ProgramsPage() {
   const [editingProgramDayId, setEditingProgramDayId] = useState<number | null>(null);
   const [dayExercises, setDayExercises] = useState<DayExercise[]>([]);
   const [dayExerciseDrafts, setDayExerciseDrafts] = useState<Record<number, DayExerciseDraft>>({});
+  const [dayExerciseCreateError, setDayExerciseCreateError] = useState<string | null>(null);
+  const [dayExerciseSaveErrors, setDayExerciseSaveErrors] = useState<Record<number, string>>({});
   const [newDayExerciseDraft, setNewDayExerciseDraft] = useState<NewDayExerciseDraft>({
     exerciseId: '',
     targetSets: '3',
@@ -125,14 +133,73 @@ export default function ProgramsPage() {
     [exerciseCatalog],
   );
 
-  function parsePositiveInt(value: string): number | null {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed <= 0) return null;
-    return parsed;
+  function parsePositiveIntField(
+    value: string,
+    label: string,
+  ): { value: number | null; error: string | null } {
+    const trimmed = value.trim();
+    if (!trimmed) return { value: null, error: `${label} is required` };
+    const parsed = Number(trimmed);
+    if (!Number.isInteger(parsed))
+      return { value: null, error: `${label} must be a whole number` };
+    if (parsed <= 0)
+      return { value: null, error: `${label} must be greater than 0` };
+    return { value: parsed, error: null };
   }
 
   function validateRepRange(minReps: number, maxReps: number): boolean {
     return minReps <= maxReps;
+  }
+
+  function getReadableErrorMessage(error: unknown, fallback: string): string {
+    if (!(error instanceof Error) || !error.message) return fallback;
+    const raw = error.message;
+    const parts = raw.split('::');
+    if (parts.length < 2) return raw;
+
+    const jsonPart = parts[parts.length - 1]?.trim();
+    if (!jsonPart) return raw;
+    try {
+      const parsed = JSON.parse(jsonPart) as
+        | { message?: string | string[] }
+        | undefined;
+      const message = parsed?.message;
+      if (Array.isArray(message)) return message[0] ?? raw;
+      if (typeof message === 'string' && message.trim()) return message;
+    } catch {
+      return raw;
+    }
+    return raw;
+  }
+
+  function parseTargetInputs(
+    draft: Pick<DayExerciseDraft, 'targetSets' | 'minReps' | 'maxReps'>,
+  ): { values: ParsedDayExerciseTargets | null; error: string | null } {
+    const targetSetsResult = parsePositiveIntField(draft.targetSets, 'Target sets');
+    if (targetSetsResult.error) return { values: null, error: targetSetsResult.error };
+
+    const minRepsResult = parsePositiveIntField(draft.minReps, 'Min reps');
+    if (minRepsResult.error) return { values: null, error: minRepsResult.error };
+
+    const maxRepsResult = parsePositiveIntField(draft.maxReps, 'Max reps');
+    if (maxRepsResult.error) return { values: null, error: maxRepsResult.error };
+
+    if (
+      targetSetsResult.value === null ||
+      minRepsResult.value === null ||
+      maxRepsResult.value === null
+    ) {
+      return { values: null, error: 'Target fields must be valid' };
+    }
+    const values = {
+      targetSets: targetSetsResult.value,
+      minReps: minRepsResult.value,
+      maxReps: maxRepsResult.value,
+    };
+    if (!validateRepRange(values.minReps, values.maxReps)) {
+      return { values: null, error: 'Min reps must be less than or equal to max reps' };
+    }
+    return { values, error: null };
   }
 
   async function loadData() {
@@ -196,9 +263,13 @@ export default function ProgramsPage() {
     if (!editingProgram || editingProgramDayId === null) {
       setDayExercises([]);
       setDayExerciseDrafts({});
+      setDayExerciseCreateError(null);
+      setDayExerciseSaveErrors({});
       return;
     }
 
+    setDayExerciseCreateError(null);
+    setDayExerciseSaveErrors({});
     loadDayExercises(editingProgram.id, editingProgramDayId);
   }, [editingProgram, editingProgramDayId]);
 
@@ -297,6 +368,8 @@ export default function ProgramsPage() {
     setEditingProgramDayId(null);
     setDayExercises([]);
     setDayExerciseDrafts({});
+    setDayExerciseCreateError(null);
+    setDayExerciseSaveErrors({});
     setNewDayExerciseDraft({
       exerciseId: '',
       targetSets: '3',
@@ -474,25 +547,28 @@ export default function ProgramsPage() {
 
   async function createDayExercise(programId: number) {
     if (editingProgramDayId === null) {
-      setError('Choose a program day first');
+      setDayExerciseCreateError('Choose a program day first');
       return;
     }
 
-    const exerciseId = parsePositiveInt(newDayExerciseDraft.exerciseId);
-    const targetSets = parsePositiveInt(newDayExerciseDraft.targetSets);
-    const minReps = parsePositiveInt(newDayExerciseDraft.minReps);
-    const maxReps = parsePositiveInt(newDayExerciseDraft.maxReps);
-
-    if (!exerciseId || !targetSets || !minReps || !maxReps) {
-      setError('Exercise and target fields must be positive numbers');
+    const exerciseIdResult = parsePositiveIntField(
+      newDayExerciseDraft.exerciseId,
+      'Exercise',
+    );
+    if (exerciseIdResult.error) {
+      setDayExerciseCreateError(exerciseIdResult.error);
       return;
     }
 
-    if (!validateRepRange(minReps, maxReps)) {
-      setError('Min reps must be less than or equal to max reps');
+    const targetInputResult = parseTargetInputs(newDayExerciseDraft);
+    if (targetInputResult.error) {
+      setDayExerciseCreateError(targetInputResult.error);
       return;
     }
+    if (!targetInputResult.values) return;
+    const { targetSets, minReps, maxReps } = targetInputResult.values;
 
+    setDayExerciseCreateError(null);
     setError(null);
     setSaving(true);
     try {
@@ -503,7 +579,7 @@ export default function ProgramsPage() {
         method: 'POST',
         token,
         body: JSON.stringify({
-          exerciseId,
+          exerciseId: exerciseIdResult.value,
           order: dayExercises.length + 1,
           targetSets,
           minReps,
@@ -512,9 +588,12 @@ export default function ProgramsPage() {
       });
 
       setNewDayExerciseDraft((prev) => ({ ...prev, exerciseId: '' }));
+      setDayExerciseCreateError(null);
       await loadDayExercises(programId, editingProgramDayId);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to add day exercise');
+      const message = getReadableErrorMessage(e, 'Failed to add day exercise');
+      setDayExerciseCreateError(message);
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -525,18 +604,22 @@ export default function ProgramsPage() {
     const draft = dayExerciseDrafts[dayExerciseId];
     if (!draft) return;
 
-    const targetSets = parsePositiveInt(draft.targetSets);
-    const minReps = parsePositiveInt(draft.minReps);
-    const maxReps = parsePositiveInt(draft.maxReps);
-    if (!targetSets || !minReps || !maxReps) {
-      setError('Target fields must be positive numbers');
+    const targetInputResult = parseTargetInputs(draft);
+    if (targetInputResult.error) {
+      setDayExerciseSaveErrors((prev) => ({
+        ...prev,
+        [dayExerciseId]: targetInputResult.error as string,
+      }));
       return;
     }
-    if (!validateRepRange(minReps, maxReps)) {
-      setError('Min reps must be less than or equal to max reps');
-      return;
-    }
+    if (!targetInputResult.values) return;
+    const { targetSets, minReps, maxReps } = targetInputResult.values;
 
+    setDayExerciseSaveErrors((prev) => {
+      const next = { ...prev };
+      delete next[dayExerciseId];
+      return next;
+    });
     setError(null);
     setSaving(true);
     try {
@@ -574,8 +657,15 @@ export default function ProgramsPage() {
           maxReps: String(updated.maxReps),
         },
       }));
+      setDayExerciseSaveErrors((prev) => {
+        const next = { ...prev };
+        delete next[dayExerciseId];
+        return next;
+      });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to save day exercise');
+      const message = getReadableErrorMessage(e, 'Failed to save day exercise');
+      setDayExerciseSaveErrors((prev) => ({ ...prev, [dayExerciseId]: message }));
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -1114,6 +1204,9 @@ export default function ProgramsPage() {
                                           exerciseId: e.target.value,
                                         }))
                                       }
+                                      onBlur={() => {
+                                        setDayExerciseCreateError(null);
+                                      }}
                                       disabled={saving}
                                     >
                                       <option value="">Select exercise</option>
@@ -1132,10 +1225,13 @@ export default function ProgramsPage() {
                                       inputMode="numeric"
                                       value={newDayExerciseDraft.targetSets}
                                       onChange={(e) =>
-                                        setNewDayExerciseDraft((prev) => ({
-                                          ...prev,
-                                          targetSets: e.target.value,
-                                        }))
+                                        {
+                                          setDayExerciseCreateError(null);
+                                          setNewDayExerciseDraft((prev) => ({
+                                            ...prev,
+                                            targetSets: e.target.value,
+                                          }));
+                                        }
                                       }
                                     />
                                   </label>
@@ -1147,10 +1243,13 @@ export default function ProgramsPage() {
                                       inputMode="numeric"
                                       value={newDayExerciseDraft.minReps}
                                       onChange={(e) =>
-                                        setNewDayExerciseDraft((prev) => ({
-                                          ...prev,
-                                          minReps: e.target.value,
-                                        }))
+                                        {
+                                          setDayExerciseCreateError(null);
+                                          setNewDayExerciseDraft((prev) => ({
+                                            ...prev,
+                                            minReps: e.target.value,
+                                          }));
+                                        }
                                       }
                                     />
                                   </label>
@@ -1162,10 +1261,13 @@ export default function ProgramsPage() {
                                       inputMode="numeric"
                                       value={newDayExerciseDraft.maxReps}
                                       onChange={(e) =>
-                                        setNewDayExerciseDraft((prev) => ({
-                                          ...prev,
-                                          maxReps: e.target.value,
-                                        }))
+                                        {
+                                          setDayExerciseCreateError(null);
+                                          setNewDayExerciseDraft((prev) => ({
+                                            ...prev,
+                                            maxReps: e.target.value,
+                                          }));
+                                        }
                                       }
                                     />
                                   </label>
@@ -1180,6 +1282,9 @@ export default function ProgramsPage() {
                                     </button>
                                   </div>
                                 </div>
+                                {dayExerciseCreateError && (
+                                  <p className="text-sm text-red-400">{dayExerciseCreateError}</p>
+                                )}
 
                                 {dayExercises.length === 0 ? (
                                   <p className="text-sm text-zinc-400">No exercises configured for this day.</p>
@@ -1188,66 +1293,86 @@ export default function ProgramsPage() {
                                     {dayExercises.map((row, index) => (
                                       <div
                                         key={row.id}
-                                        className="grid gap-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 md:grid-cols-[70px,1fr,repeat(3,minmax(0,110px)),auto]"
+                                        className="space-y-3 rounded-md border border-zinc-700 bg-zinc-900 p-3"
                                       >
                                         <div className="text-sm text-zinc-400">#{row.order}</div>
                                         <div className="text-sm text-zinc-200">
                                           {exerciseNameById[row.exerciseId] ?? `Exercise #${row.exerciseId}`}
                                         </div>
-                                        <input
-                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
-                                          inputMode="numeric"
-                                          value={dayExerciseDrafts[row.id]?.targetSets ?? String(row.targetSets)}
-                                          onChange={(e) =>
-                                            setDayExerciseDrafts((prev) => ({
-                                              ...prev,
-                                              [row.id]: {
-                                                ...(prev[row.id] ?? {
-                                                  targetSets: String(row.targetSets),
-                                                  minReps: String(row.minReps),
-                                                  maxReps: String(row.maxReps),
-                                                }),
-                                                targetSets: e.target.value,
-                                              },
-                                            }))
-                                          }
-                                        />
-                                        <input
-                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
-                                          inputMode="numeric"
-                                          value={dayExerciseDrafts[row.id]?.minReps ?? String(row.minReps)}
-                                          onChange={(e) =>
-                                            setDayExerciseDrafts((prev) => ({
-                                              ...prev,
-                                              [row.id]: {
-                                                ...(prev[row.id] ?? {
-                                                  targetSets: String(row.targetSets),
-                                                  minReps: String(row.minReps),
-                                                  maxReps: String(row.maxReps),
-                                                }),
-                                                minReps: e.target.value,
-                                              },
-                                            }))
-                                          }
-                                        />
-                                        <input
-                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
-                                          inputMode="numeric"
-                                          value={dayExerciseDrafts[row.id]?.maxReps ?? String(row.maxReps)}
-                                          onChange={(e) =>
-                                            setDayExerciseDrafts((prev) => ({
-                                              ...prev,
-                                              [row.id]: {
-                                                ...(prev[row.id] ?? {
-                                                  targetSets: String(row.targetSets),
-                                                  minReps: String(row.minReps),
-                                                  maxReps: String(row.maxReps),
-                                                }),
-                                                maxReps: e.target.value,
-                                              },
-                                            }))
-                                          }
-                                        />
+                                        <div className="grid gap-2 md:grid-cols-3">
+                                          <input
+                                            aria-label="Target sets"
+                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                            inputMode="numeric"
+                                            value={dayExerciseDrafts[row.id]?.targetSets ?? String(row.targetSets)}
+                                            onChange={(e) => {
+                                              setDayExerciseSaveErrors((prev) => {
+                                                const next = { ...prev };
+                                                delete next[row.id];
+                                                return next;
+                                              });
+                                              setDayExerciseDrafts((prev) => ({
+                                                ...prev,
+                                                [row.id]: {
+                                                  ...(prev[row.id] ?? {
+                                                    targetSets: String(row.targetSets),
+                                                    minReps: String(row.minReps),
+                                                    maxReps: String(row.maxReps),
+                                                  }),
+                                                  targetSets: e.target.value,
+                                                },
+                                              }));
+                                            }}
+                                          />
+                                          <input
+                                            aria-label="Min reps"
+                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                            inputMode="numeric"
+                                            value={dayExerciseDrafts[row.id]?.minReps ?? String(row.minReps)}
+                                            onChange={(e) => {
+                                              setDayExerciseSaveErrors((prev) => {
+                                                const next = { ...prev };
+                                                delete next[row.id];
+                                                return next;
+                                              });
+                                              setDayExerciseDrafts((prev) => ({
+                                                ...prev,
+                                                [row.id]: {
+                                                  ...(prev[row.id] ?? {
+                                                    targetSets: String(row.targetSets),
+                                                    minReps: String(row.minReps),
+                                                    maxReps: String(row.maxReps),
+                                                  }),
+                                                  minReps: e.target.value,
+                                                },
+                                              }));
+                                            }}
+                                          />
+                                          <input
+                                            aria-label="Max reps"
+                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                            inputMode="numeric"
+                                            value={dayExerciseDrafts[row.id]?.maxReps ?? String(row.maxReps)}
+                                            onChange={(e) => {
+                                              setDayExerciseSaveErrors((prev) => {
+                                                const next = { ...prev };
+                                                delete next[row.id];
+                                                return next;
+                                              });
+                                              setDayExerciseDrafts((prev) => ({
+                                                ...prev,
+                                                [row.id]: {
+                                                  ...(prev[row.id] ?? {
+                                                    targetSets: String(row.targetSets),
+                                                    minReps: String(row.minReps),
+                                                    maxReps: String(row.maxReps),
+                                                  }),
+                                                  maxReps: e.target.value,
+                                                },
+                                              }));
+                                            }}
+                                          />
+                                        </div>
                                         <div className="flex flex-wrap gap-2">
                                           <button
                                             className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
@@ -1278,6 +1403,11 @@ export default function ProgramsPage() {
                                             Delete
                                           </button>
                                         </div>
+                                        {dayExerciseSaveErrors[row.id] && (
+                                          <p className="text-sm text-red-400">
+                                            {dayExerciseSaveErrors[row.id]}
+                                          </p>
+                                        )}
                                       </div>
                                     ))}
                                   </div>

@@ -71,6 +71,16 @@ export class DayExercisesService {
     this.validateRepRange(dto.minReps, dto.maxReps);
 
     await this.ensureExerciseVisibleToUser(userId, dto.exerciseId);
+    const existingExerciseForDay = await this.prisma.dayExercise.findFirst({
+      where: {
+        exerciseId: dto.exerciseId,
+        ...this.dayOwnershipWhere(userId, programId, dayId),
+      },
+      select: { id: true },
+    });
+    if (existingExerciseForDay) {
+      throw new ConflictException('Exercise already exists for this day');
+    }
 
     try {
       return await this.prisma.dayExercise.create({
@@ -136,7 +146,20 @@ export class DayExercisesService {
     dto: UpdateDayExerciseDto,
   ): Promise<DayExercise> {
     await this.ensureDayOwnership(userId, programId, dayId);
-    this.validateRepRange(dto.minReps, dto.maxReps);
+    const existing = await this.prisma.dayExercise.findFirst({
+      where: {
+        id: dayExerciseId,
+        ...this.dayOwnershipWhere(userId, programId, dayId),
+      },
+      select: {
+        minReps: true,
+        maxReps: true,
+      },
+    });
+    if (!existing) throw new NotFoundException('Day exercise not found');
+    const nextMinReps = dto.minReps ?? existing.minReps;
+    const nextMaxReps = dto.maxReps ?? existing.maxReps;
+    this.validateRepRange(nextMinReps, nextMaxReps);
 
     const data: Prisma.DayExerciseUpdateManyMutationInput = {
       ...(dto.order !== undefined ? { order: dto.order } : {}),
