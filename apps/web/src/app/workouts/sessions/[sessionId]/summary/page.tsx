@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowDown, ArrowUp, Minus, type LucideIcon } from 'lucide-react';
+import { SecondaryButton } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/ui/section-header';
+import { StatCard } from '@/components/ui/stat-card';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 import { AppShell } from '@/components/app-shell';
@@ -154,80 +158,66 @@ export default function SessionSummaryPage() {
     <AppShell
       title={`Summary - Session #${sessionId}`}
       actions={
-        <button
-          onClick={load}
-          className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 hover:bg-zinc-700"
-        >
+        <SecondaryButton onClick={load}>
           Refresh
-        </button>
+        </SecondaryButton>
       }
     >
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <Card className="border-red-500/40 bg-red-500/10 text-sm text-red-300">{error}</Card>}
 
       {!data ? (
-        <p>Loading...</p>
+        <Card className="text-sm text-[var(--ui-text-secondary)]">Loading...</Card>
       ) : (
         <>
-          <div className="space-y-2 rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="flex items-baseline justify-between">
-              <div className="font-semibold">Workout totals</div>
-              <div className="text-sm text-zinc-300">Duration: {formatDuration(data.durationSeconds)}</div>
-            </div>
+          <Card className="space-y-3">
+            <SectionHeader
+              title="Workout totals"
+              action={<div className="text-sm text-[var(--ui-text-secondary)]">Duration: {formatDuration(data.durationSeconds)}</div>}
+            />
 
             <div className="grid grid-cols-3 gap-3 text-sm">
-              <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
-                <div className="text-xs text-zinc-400">Sets</div>
-                <div className="text-lg font-semibold">{data.totals.totalSets}</div>
-              </div>
-
-              <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
-                <div className="text-xs text-zinc-400">Reps</div>
-                <div className="text-lg font-semibold">{data.totals.totalReps}</div>
-              </div>
-
-              <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
-                <div className="text-xs text-zinc-400">Volume</div>
-                <div className="text-lg font-semibold">{Math.round(data.totals.totalVolume)}</div>
-              </div>
+              <StatCard label="Sets" value={data.totals.totalSets} className="text-lg" />
+              <StatCard label="Reps" value={data.totals.totalReps} className="text-lg" />
+              <StatCard label="Volume" value={Math.round(data.totals.totalVolume)} className="text-lg" />
             </div>
 
-            <div className="text-xs text-zinc-400">
+            <div className="text-xs text-[var(--ui-text-secondary)]">
               Started: {new Date(data.startedAt).toLocaleString()}
               {data.endedAt ? ` | Ended: ${new Date(data.endedAt).toLocaleString()}` : ''}
             </div>
-          </div>
+          </Card>
 
-          <div className="rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="mb-3 font-semibold">Muscle workload (hypertrophy signal)</div>
+          <Card>
+            <SectionHeader title="Muscle workload (hypertrophy signal)" />
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {sortedMuscles.map((m) => (
-                <div key={m.muscle} className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
+                <div key={m.muscle} className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] p-3">
                   <div className="flex items-baseline justify-between">
                     <div className="font-semibold">
                       <ProgressMark state={m.hypertrophyProgress} />
                       {m.muscle}
                     </div>
-                    <div className="text-xs text-zinc-400">
+                    <div className="text-xs text-[var(--ui-text-secondary)]">
                       {m.currentTotalSets} sets | {m.currentTotalReps} reps
                     </div>
                   </div>
 
                   <div className="mt-2 grid grid-cols-3 gap-3 text-sm">
                     <div>
-                      <div className="text-xs text-zinc-400">Current volume</div>
+                      <div className="text-xs text-[var(--ui-text-secondary)]">Current volume</div>
                       <div className="font-semibold">{Math.round(m.currentTotalVolume)}</div>
                     </div>
 
                     <div>
-                      <div className="text-xs text-zinc-400">Previous volume</div>
+                      <div className="text-xs text-[var(--ui-text-secondary)]">Previous volume</div>
                       <div className="font-semibold">
                         {m.previousTotalVolume === null ? '-' : Math.round(m.previousTotalVolume)}
                       </div>
                     </div>
 
                     <div>
-                      <div className="text-xs text-zinc-400">Delta volume</div>
+                      <div className="text-xs text-[var(--ui-text-secondary)]">Delta volume</div>
                       <div className="font-semibold">
                         {m.volumeDelta === null
                           ? '-'
@@ -239,54 +229,54 @@ export default function SessionSummaryPage() {
               ))}
 
               {sortedMuscles.length === 0 && (
-                <div className="text-sm text-zinc-400">No muscle totals for this session.</div>
+                <div className="text-sm text-[var(--ui-text-secondary)]">No muscle totals for this session.</div>
               )}
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[var(--ui-text-secondary)]">
               <span>Legend:</span>
               <ProgressLegendItem state="IMPROVED" text="improved" />
               <ProgressLegendItem state="SAME" text="same" />
               <ProgressLegendItem state="REGRESSED" text="regressed" />
               <ProgressLegendItem state="NO_BASELINE" text="no baseline" />
             </div>
-          </div>
+          </Card>
 
-          <div className="rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="mb-3 font-semibold">Strength signal (e1RM)</div>
+          <Card>
+            <SectionHeader title="Strength signal (e1RM)" />
 
             <div className="space-y-3">
               {sortedExercises.map((ex) => (
-                <div key={ex.exerciseId} className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
+                <div key={ex.exerciseId} className="rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] p-3">
                   <div className="flex items-baseline justify-between">
                     <div className="font-semibold">
                       <ProgressMark state={ex.strengthProgress} />
-                      {ex.name} <span className="text-xs text-zinc-400">({ex.primaryMuscle})</span>
+                      {ex.name} <span className="text-xs text-[var(--ui-text-secondary)]">({ex.primaryMuscle})</span>
                     </div>
 
-                    <div className="text-sm text-zinc-400">
+                    <div className="text-sm text-[var(--ui-text-secondary)]">
                       {ex.sets} sets | {ex.repsTotal} reps | vol {Math.round(ex.currentVolume)}
                     </div>
                   </div>
 
                   <div className="mt-2 grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
                     <div>
-                      <div className="text-xs text-zinc-400">Current best e1RM</div>
+                      <div className="text-xs text-[var(--ui-text-secondary)]">Current best e1RM</div>
                       <div className="font-semibold">{formatBestE1rmSet(ex.currentBestE1rmSet)}</div>
                     </div>
 
                     <div>
-                      <div className="text-xs text-zinc-400">Previous best e1RM</div>
+                      <div className="text-xs text-[var(--ui-text-secondary)]">Previous best e1RM</div>
                       <div className="font-semibold">{formatBestE1rmSet(ex.previousBestE1rmSet)}</div>
                     </div>
 
                     <div>
-                      <div className="text-xs text-zinc-400">Delta e1RM</div>
+                      <div className="text-xs text-[var(--ui-text-secondary)]">Delta e1RM</div>
                       <div className="font-semibold">{formatE1rmDelta(ex.currentBestE1rmSet, ex.previousBestE1rmSet)}</div>
                     </div>
                   </div>
 
-                  <div className="mt-2 text-xs text-zinc-400">
+                  <div className="mt-2 text-xs text-[var(--ui-text-secondary)]">
                     Hypertrophy: <ProgressMark state={ex.hypertrophyProgress} />
                     Delta volume{' '}
                     {ex.volumeDelta === null
@@ -297,18 +287,18 @@ export default function SessionSummaryPage() {
               ))}
 
               {sortedExercises.length === 0 && (
-                <div className="text-sm text-zinc-400">No performed sets in this session.</div>
+                <div className="text-sm text-[var(--ui-text-secondary)]">No performed sets in this session.</div>
               )}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[var(--ui-text-secondary)]">
               <span>Legend:</span>
               <ProgressLegendItem state="IMPROVED" text="improved" />
               <ProgressLegendItem state="SAME" text="same" />
               <ProgressLegendItem state="REGRESSED" text="regressed" />
               <ProgressLegendItem state="NO_BASELINE" text="no baseline" />
             </div>
-          </div>
+          </Card>
         </>
       )}
     </AppShell>

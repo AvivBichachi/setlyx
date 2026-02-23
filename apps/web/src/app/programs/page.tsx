@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 import { AppShell } from '@/components/app-shell';
+import { Badge } from '@/components/ui/badge';
+import { DangerButton, PrimaryButton, SecondaryButton } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/ui/section-header';
 
 type ActiveSession = {
   id: number;
@@ -816,13 +820,9 @@ export default function ProgramsPage() {
     <AppShell
       title="Programs"
       actions={
-        <button
-          className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 hover:bg-zinc-700"
-          onClick={loadData}
-          disabled={loading || saving}
-        >
+        <SecondaryButton onClick={loadData} disabled={loading || saving}>
           Refresh
-        </button>
+        </SecondaryButton>
       }
     >
       {error && <p className="text-sm text-red-400">{error}</p>}
@@ -831,38 +831,33 @@ export default function ProgramsPage() {
         <p>Loading...</p>
       ) : (
         <>
-          <section className="space-y-3 rounded-lg border border-zinc-700 bg-zinc-800 p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Workout entrypoint</h2>
-              {activeProgram ? (
-                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                  Active program: {activeProgram.name}
-                </span>
-              ) : (
-                <span className="rounded-full border border-zinc-600 px-3 py-1 text-xs text-zinc-300">
-                  No active program
-                </span>
-              )}
-            </div>
+          <Card padding="lg" className="space-y-3">
+            <SectionHeader
+              title="Workout entrypoint"
+              action={
+                activeProgram ? (
+                  <Badge variant="active">Active program: {activeProgram.name}</Badge>
+                ) : (
+                  <Badge>No active program</Badge>
+                )
+              }
+            />
 
             {activeSession ? (
               <div className="flex flex-wrap items-center gap-3">
                 <div className="text-sm text-zinc-300">
                   Active session #{activeSession.id} started at {new Date(activeSession.startedAt).toLocaleString()}
                 </div>
-                <button
-                  className="rounded-md bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white"
-                  onClick={onResumeWorkout}
-                >
+                <PrimaryButton onClick={onResumeWorkout}>
                   Resume workout
-                </button>
+                </PrimaryButton>
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="flex flex-col gap-1 md:col-span-2">
                   <span className="text-sm text-zinc-400">Program day</span>
                   <select
-                    className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none disabled:opacity-60"
+                    className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none disabled:opacity-60"
                     value={selectedProgramDayId ?? ''}
                     onChange={(e) => setSelectedProgramDayId(Number(e.target.value))}
                     disabled={!activeProgram || activeProgram.days.length === 0}
@@ -879,13 +874,13 @@ export default function ProgramsPage() {
                 </label>
 
                 <div className="flex items-end">
-                  <button
-                    className="w-full rounded-md bg-zinc-100 px-4 py-2 font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
+                  <PrimaryButton
+                    className="w-full"
                     onClick={onStartWorkout}
                     disabled={saving || selectedProgramDayId === null}
                   >
                     Start workout
-                  </button>
+                  </PrimaryButton>
                 </div>
 
                 {!activeProgram && (
@@ -900,16 +895,16 @@ export default function ProgramsPage() {
                 )}
               </div>
             )}
-          </section>
+          </Card>
 
-          <section className="space-y-4 rounded-lg border border-zinc-700 bg-zinc-800 p-5">
-            <h2 className="text-xl font-semibold">Create program</h2>
+          <Card padding="lg" className="space-y-4">
+            <SectionHeader title="Create program" />
 
             <div className="grid gap-3 md:grid-cols-3">
               <label className="flex flex-col gap-1 md:col-span-2">
                 <span className="text-sm text-zinc-400">Name</span>
                 <input
-                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                  className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                   value={createName}
                   onChange={(e) => setCreateName(e.target.value)}
                   placeholder="e.g. Hypertrophy Block"
@@ -919,7 +914,7 @@ export default function ProgramsPage() {
               <label className="flex flex-col gap-1">
                 <span className="text-sm text-zinc-400">Type</span>
                 <select
-                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                  className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                   value={createType}
                   onChange={(e) => setCreateType(e.target.value as ProgramType)}
                 >
@@ -942,17 +937,13 @@ export default function ProgramsPage() {
               Set as active program
             </label>
 
-            <button
-              className="rounded-md bg-zinc-100 px-4 py-2 font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
-              onClick={onCreateProgram}
-              disabled={saving}
-            >
+            <PrimaryButton onClick={onCreateProgram} disabled={saving}>
               Create program
-            </button>
-          </section>
+            </PrimaryButton>
+          </Card>
 
-          <section className="space-y-4 rounded-lg border border-zinc-700 bg-zinc-800 p-5">
-            <h2 className="text-xl font-semibold">Your programs</h2>
+          <Card padding="lg" className="space-y-4">
+            <SectionHeader title="Your programs" />
 
             {programs.length === 0 ? (
               <p className="text-sm text-zinc-400">No programs yet. Create your first program above.</p>
@@ -962,15 +953,13 @@ export default function ProgramsPage() {
                   const isEditing = editingProgramId === program.id && editor !== null;
 
                   return (
-                    <article key={program.id} className="rounded-md border border-zinc-700 bg-zinc-900 p-4">
+                    <article key={program.id} className="rounded-md border border-[var(--ui-border)] bg-zinc-900 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="text-lg font-semibold">{isEditing ? editor.name : program.name}</h3>
                             {program.isActive && (
-                              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300">
-                                Active
-                              </span>
+                              <Badge variant="active">Active</Badge>
                             )}
                           </div>
                           <p className="text-sm text-zinc-400">
@@ -983,38 +972,22 @@ export default function ProgramsPage() {
 
                         {isEditing ? (
                           <div className="flex gap-2">
-                            <button
-                              className="rounded-md bg-zinc-100 px-3 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
-                              onClick={() => saveEdit(program.id)}
-                              disabled={saving}
-                            >
+                            <PrimaryButton onClick={() => saveEdit(program.id)} disabled={saving}>
                               Save
-                            </button>
-                            <button
-                              className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                              onClick={cancelEdit}
-                              disabled={saving}
-                            >
+                            </PrimaryButton>
+                            <SecondaryButton onClick={cancelEdit} disabled={saving}>
                               Cancel
-                            </button>
+                            </SecondaryButton>
                           </div>
                         ) : (
                           <div className="flex gap-2">
-                            <button
-                              className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                              onClick={() => beginEdit(program)}
-                              disabled={saving}
-                            >
+                            <SecondaryButton onClick={() => beginEdit(program)} disabled={saving}>
                               Edit
-                            </button>
+                            </SecondaryButton>
                             {!program.isActive && (
-                              <button
-                                className="rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 hover:bg-emerald-500/20"
-                                onClick={() => setProgramActive(program.id)}
-                                disabled={saving}
-                              >
+                              <PrimaryButton onClick={() => setProgramActive(program.id)} disabled={saving}>
                                 Set active
-                              </button>
+                              </PrimaryButton>
                             )}
                           </div>
                         )}
@@ -1026,7 +999,7 @@ export default function ProgramsPage() {
                             <label className="flex flex-col gap-1 md:col-span-2">
                               <span className="text-sm text-zinc-400">Name</span>
                               <input
-                                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 outline-none"
+                                className="rounded-md border border-[var(--ui-border)] bg-zinc-800 px-3 py-2 outline-none"
                                 value={editor.name}
                                 onChange={(e) =>
                                   setEditor((prev) => (prev ? { ...prev, name: e.target.value } : prev))
@@ -1037,7 +1010,7 @@ export default function ProgramsPage() {
                             <label className="flex flex-col gap-1">
                               <span className="text-sm text-zinc-400">Type</span>
                               <select
-                                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 outline-none"
+                                className="rounded-md border border-[var(--ui-border)] bg-zinc-800 px-3 py-2 outline-none"
                                 value={editor.type}
                                 onChange={(e) =>
                                   setEditor((prev) =>
@@ -1068,7 +1041,7 @@ export default function ProgramsPage() {
                             </label>
                           </div>
 
-                          <div className="space-y-3 rounded-md border border-zinc-700 bg-zinc-800 p-4">
+                          <div className="space-y-3 rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] p-4">
                             <h4 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
                               ProgramDays
                             </h4>
@@ -1077,7 +1050,7 @@ export default function ProgramsPage() {
                               <label className="flex min-w-[220px] flex-1 flex-col gap-1">
                                 <span className="text-sm text-zinc-400">New day name</span>
                                 <input
-                                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                  className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                                   value={dayEditor?.newDayName ?? ''}
                                   onChange={(e) =>
                                     setDayEditor((prev) =>
@@ -1087,30 +1060,26 @@ export default function ProgramsPage() {
                                   placeholder="e.g. Lower A"
                                 />
                               </label>
-                              <button
-                                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50"
-                                onClick={() => createProgramDay(program.id)}
-                                disabled={saving}
-                              >
+                              <SecondaryButton onClick={() => createProgramDay(program.id)} disabled={saving}>
                                 Add day
-                              </button>
+                              </SecondaryButton>
                             </div>
 
                             {program.days.length === 0 ? (
                               <p className="text-sm text-zinc-400">No days yet.</p>
                             ) : (
-                              <div className="space-y-2">
+                              <div className="space-y-2 rounded-md border border-[var(--ui-border)] bg-[var(--ui-card)] p-2">
                                 {program.days
                                   .slice()
                                   .sort((a, b) => a.order - b.order)
                                   .map((day, index, arr) => (
                                     <div
                                       key={day.id}
-                                      className="grid gap-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 md:grid-cols-[80px,1fr,auto]"
+                                      className="grid gap-2 rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] p-3 md:grid-cols-[80px,1fr,auto]"
                                     >
                                       <div className="text-sm text-zinc-400">#{day.order}</div>
                                       <input
-                                        className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none"
+                                        className="rounded-md border border-[var(--ui-border)] bg-zinc-800 px-3 py-2 text-sm outline-none"
                                         value={dayEditor?.draftNameByDayId[day.id] ?? day.name}
                                         onChange={(e) =>
                                           setDayEditor((prev) =>
@@ -1127,34 +1096,34 @@ export default function ProgramsPage() {
                                         }
                                       />
                                       <div className="flex flex-wrap gap-2">
-                                        <button
-                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                        <SecondaryButton
+                                          className="px-2 py-1 text-xs"
                                           onClick={() => moveProgramDay(program.id, day.id, -1)}
                                           disabled={saving || index === 0}
                                         >
                                           Up
-                                        </button>
-                                        <button
-                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                        </SecondaryButton>
+                                        <SecondaryButton
+                                          className="px-2 py-1 text-xs"
                                           onClick={() => moveProgramDay(program.id, day.id, 1)}
                                           disabled={saving || index === arr.length - 1}
                                         >
                                           Down
-                                        </button>
-                                        <button
-                                          className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                        </SecondaryButton>
+                                        <SecondaryButton
+                                          className="px-2 py-1 text-xs"
                                           onClick={() => renameProgramDay(program.id, day.id)}
                                           disabled={saving}
                                         >
                                           Rename
-                                        </button>
-                                        <button
-                                          className="rounded-md border border-red-500/50 bg-red-500/10 px-2 py-1 text-xs text-red-200 hover:bg-red-500/20 disabled:opacity-50"
+                                        </SecondaryButton>
+                                        <DangerButton
+                                          className="px-2 py-1 text-xs"
                                           onClick={() => deleteProgramDay(program.id, day.id)}
                                           disabled={saving}
                                         >
                                           Delete
-                                        </button>
+                                        </DangerButton>
                                       </div>
                                     </div>
                                   ))}
@@ -1162,7 +1131,7 @@ export default function ProgramsPage() {
                             )}
                           </div>
 
-                          <div className="space-y-3 rounded-md border border-zinc-700 bg-zinc-800 p-4">
+                          <div className="space-y-3 rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] p-4">
                             <h4 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
                               DayExercises
                             </h4>
@@ -1176,7 +1145,7 @@ export default function ProgramsPage() {
                                 <label className="flex flex-col gap-1">
                                   <span className="text-sm text-zinc-400">Edit ProgramDay</span>
                                   <select
-                                    className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                    className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                                     value={editingProgramDayId ?? ''}
                                     onChange={(e) => setEditingProgramDayId(Number(e.target.value))}
                                     disabled={saving}
@@ -1196,7 +1165,7 @@ export default function ProgramsPage() {
                                   <label className="flex flex-col gap-1">
                                     <span className="text-sm text-zinc-400">Exercise</span>
                                     <select
-                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                                       value={newDayExerciseDraft.exerciseId}
                                       onChange={(e) =>
                                         setNewDayExerciseDraft((prev) => ({
@@ -1221,7 +1190,7 @@ export default function ProgramsPage() {
                                   <label className="flex flex-col gap-1">
                                     <span className="text-sm text-zinc-400">Sets</span>
                                     <input
-                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                                       inputMode="numeric"
                                       value={newDayExerciseDraft.targetSets}
                                       onChange={(e) =>
@@ -1239,7 +1208,7 @@ export default function ProgramsPage() {
                                   <label className="flex flex-col gap-1">
                                     <span className="text-sm text-zinc-400">Min reps</span>
                                     <input
-                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                                       inputMode="numeric"
                                       value={newDayExerciseDraft.minReps}
                                       onChange={(e) =>
@@ -1257,7 +1226,7 @@ export default function ProgramsPage() {
                                   <label className="flex flex-col gap-1">
                                     <span className="text-sm text-zinc-400">Max reps</span>
                                     <input
-                                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                                      className="rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none"
                                       inputMode="numeric"
                                       value={newDayExerciseDraft.maxReps}
                                       onChange={(e) =>
@@ -1273,13 +1242,13 @@ export default function ProgramsPage() {
                                   </label>
 
                                   <div className="flex items-end">
-                                    <button
-                                      className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50"
+                                    <SecondaryButton
+                                      className="w-full"
                                       onClick={() => createDayExercise(program.id)}
                                       disabled={saving || editingProgramDayId === null}
                                     >
                                       Add
-                                    </button>
+                                    </SecondaryButton>
                                   </div>
                                 </div>
                                 {dayExerciseCreateError && (
@@ -1289,11 +1258,11 @@ export default function ProgramsPage() {
                                 {dayExercises.length === 0 ? (
                                   <p className="text-sm text-zinc-400">No exercises configured for this day.</p>
                                 ) : (
-                                  <div className="space-y-2">
+                                  <div className="space-y-2 rounded-md border border-[var(--ui-border)] bg-[var(--ui-card)] p-2">
                                     {dayExercises.map((row, index) => (
                                       <div
                                         key={row.id}
-                                        className="space-y-3 rounded-md border border-zinc-700 bg-zinc-900 p-3"
+                                        className="space-y-3 rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] p-3"
                                       >
                                         <div className="text-sm text-zinc-400">#{row.order}</div>
                                         <div className="text-sm text-zinc-200">
@@ -1302,7 +1271,7 @@ export default function ProgramsPage() {
                                         <div className="grid gap-2 md:grid-cols-3">
                                           <input
                                             aria-label="Target sets"
-                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                            className="rounded-md border border-[var(--ui-border)] bg-zinc-800 px-2 py-1 text-sm outline-none"
                                             inputMode="numeric"
                                             value={dayExerciseDrafts[row.id]?.targetSets ?? String(row.targetSets)}
                                             onChange={(e) => {
@@ -1326,7 +1295,7 @@ export default function ProgramsPage() {
                                           />
                                           <input
                                             aria-label="Min reps"
-                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                            className="rounded-md border border-[var(--ui-border)] bg-zinc-800 px-2 py-1 text-sm outline-none"
                                             inputMode="numeric"
                                             value={dayExerciseDrafts[row.id]?.minReps ?? String(row.minReps)}
                                             onChange={(e) => {
@@ -1350,7 +1319,7 @@ export default function ProgramsPage() {
                                           />
                                           <input
                                             aria-label="Max reps"
-                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm outline-none"
+                                            className="rounded-md border border-[var(--ui-border)] bg-zinc-800 px-2 py-1 text-sm outline-none"
                                             inputMode="numeric"
                                             value={dayExerciseDrafts[row.id]?.maxReps ?? String(row.maxReps)}
                                             onChange={(e) => {
@@ -1374,34 +1343,34 @@ export default function ProgramsPage() {
                                           />
                                         </div>
                                         <div className="flex flex-wrap gap-2">
-                                          <button
-                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                          <SecondaryButton
+                                            className="px-2 py-1 text-xs"
                                             onClick={() => moveDayExercise(program.id, row.id, -1)}
                                             disabled={saving || index === 0}
                                           >
                                             Up
-                                          </button>
-                                          <button
-                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                          </SecondaryButton>
+                                          <SecondaryButton
+                                            className="px-2 py-1 text-xs"
                                             onClick={() => moveDayExercise(program.id, row.id, 1)}
                                             disabled={saving || index === dayExercises.length - 1}
                                           >
                                             Down
-                                          </button>
-                                          <button
-                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-50"
+                                          </SecondaryButton>
+                                          <SecondaryButton
+                                            className="px-2 py-1 text-xs"
                                             onClick={() => saveDayExercise(program.id, row.id)}
                                             disabled={saving}
                                           >
                                             Save
-                                          </button>
-                                          <button
-                                            className="rounded-md border border-red-500/50 bg-red-500/10 px-2 py-1 text-xs text-red-200 hover:bg-red-500/20 disabled:opacity-50"
+                                          </SecondaryButton>
+                                          <DangerButton
+                                            className="px-2 py-1 text-xs"
                                             onClick={() => deleteDayExercise(program.id, row.id)}
                                             disabled={saving}
                                           >
                                             Delete
-                                          </button>
+                                          </DangerButton>
                                         </div>
                                         {dayExerciseSaveErrors[row.id] && (
                                           <p className="text-sm text-red-400">
@@ -1422,7 +1391,7 @@ export default function ProgramsPage() {
                 })}
               </div>
             )}
-          </section>
+          </Card>
         </>
       )}
     </AppShell>

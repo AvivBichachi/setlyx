@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SectionHeader } from '@/components/ui/section-header';
+import { StatCard } from '@/components/ui/stat-card';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 
@@ -70,7 +75,7 @@ function toChartPoints(
   values: Array<number | null>,
   width: number,
   height: number,
-  padding: number,
+  yPadding: number,
 ): { points: ChartPoint[]; min: number; max: number } {
   const numeric = values.filter((v): v is number => v !== null);
   if (numeric.length === 0) return { points: [], min: 0, max: 0 };
@@ -78,13 +83,12 @@ function toChartPoints(
   const min = Math.min(...numeric);
   const max = Math.max(...numeric);
   const range = max - min || 1;
-  const innerWidth = width - padding * 2;
-  const innerHeight = height - padding * 2;
+  const innerHeight = height - yPadding * 2;
 
   const points = values.map((value, index) => {
     if (value === null) return null;
-    const x = padding + (values.length === 1 ? innerWidth / 2 : (index / (values.length - 1)) * innerWidth);
-    const y = padding + innerHeight - ((value - min) / range) * innerHeight;
+    const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+    const y = yPadding + innerHeight - ((value - min) / range) * innerHeight;
     return { x, y };
   }).filter((p): p is ChartPoint => p !== null);
 
@@ -93,6 +97,14 @@ function toChartPoints(
 
 function pointsToPolyline(points: ChartPoint[]): string {
   return points.map((p) => `${p.x},${p.y}`).join(' ');
+}
+
+function pointsToArea(points: ChartPoint[], baselineY: number): string {
+  if (points.length === 0) return '';
+  const topPath = pointsToPolyline(points);
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `${topPath} ${last.x},${baselineY} ${first.x},${baselineY}`;
 }
 
 export default function ProgressPage() {
@@ -105,6 +117,7 @@ export default function ProgressPage() {
   const [selectedProgramDayId, setSelectedProgramDayId] = useState<number | null>(null);
   const [metric, setMetric] = useState<ProgressMetric>('e1rm');
   const [series, setSeries] = useState<ProgressSeriesResponse | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const selectedProgram = useMemo(
     () => programs.find((program) => program.id === selectedProgramId) ?? null,
@@ -204,38 +217,67 @@ export default function ProgressPage() {
   const chart = useMemo(() => {
     const width = 860;
     const height = 320;
-    const padding = 26;
+    const yPadding = 14;
     const values = series?.points.map((p) => p.value ?? null) ?? [];
     const emaValues = series?.points.map((p) => p.emaValue ?? null) ?? [];
-    const raw = toChartPoints(values, width, height, padding);
-    const ema = toChartPoints(emaValues, width, height, padding);
+    const raw = toChartPoints(values, width, height, yPadding);
+    const ema = toChartPoints(emaValues, width, height, yPadding);
     const min = Math.min(raw.min, ema.min);
     const max = Math.max(raw.max, ema.max);
-    return { width, height, padding, raw, ema, min, max };
+    return { width, height, yPadding, raw, ema, min, max };
   }, [series]);
+
+  useEffect(() => {
+    setHoveredIndex(null);
+  }, [series, metric, selectedProgramDayId, selectedProgramId]);
+
+  const hoveredPoint = useMemo(() => {
+    if (!series || hoveredIndex === null || hoveredIndex < 0 || hoveredIndex >= series.points.length) return null;
+    const point = series.points[hoveredIndex];
+    const x = series.points.length === 1 ? chart.width / 2 : (hoveredIndex / (series.points.length - 1)) * chart.width;
+    return { point, x };
+  }, [series, hoveredIndex, chart.width]);
+
+  function onChartMouseMove(event: React.MouseEvent<SVGSVGElement>) {
+    if (!series || series.points.length === 0) return;
+    const svg = event.currentTarget;
+    const bounds = svg.getBoundingClientRect();
+    if (bounds.width <= 0) return;
+    const ratio = (event.clientX - bounds.left) / bounds.width;
+    const x = Math.max(0, Math.min(chart.width, ratio * chart.width));
+    const index = series.points.length === 1
+      ? 0
+      : Math.round((x / chart.width) * (series.points.length - 1));
+    setHoveredIndex(index);
+  }
 
   return (
     <AppShell title="Progress">
       {error && (
-        <div className="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+        <Card className="border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
-        </div>
+        </Card>
       )}
 
       {loading ? (
-        <div className="rounded-md border border-zinc-700 bg-zinc-800 p-5 text-zinc-300">
+        <Card padding="lg" className="text-[var(--ui-text-secondary)]">
           Loading progress...
-        </div>
+        </Card>
       ) : programs.length === 0 ? (
-        <div className="rounded-md border border-zinc-700 bg-zinc-800 p-5 text-zinc-300">
+        <Card padding="lg" className="text-[var(--ui-text-secondary)]">
           No progress data yet. Complete a workout session to start tracking trends.
-        </div>
+        </Card>
       ) : (
-        <div className="space-y-4">
-          <section className="rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="mb-2 text-sm text-zinc-400">Program</div>
+        <div className="space-y-6">
+          <Card>
+            <SectionHeader
+              title="Program"
+              action={
+                selectedProgram?.isActive ? <Badge variant="active">Active</Badge> : null
+              }
+            />
             <select
-              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+              className="w-full rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 text-[var(--ui-text-primary)] outline-none"
               value={selectedProgramId ?? ''}
               onChange={(e) => setSelectedProgramId(Number(e.target.value))}
             >
@@ -245,153 +287,170 @@ export default function ProgressPage() {
                 </option>
               ))}
             </select>
-          </section>
+          </Card>
 
-          <section className="rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="mb-2 text-sm text-zinc-400">Program day</div>
-            <div className="flex flex-wrap gap-2">
-              {(selectedProgram?.days ?? []).map((day) => {
-                const active = day.id === selectedProgramDayId;
-                return (
-                  <button
-                    key={day.id}
-                    className={
-                      active
-                        ? 'rounded-md border border-zinc-500 bg-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-100'
-                        : 'rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700'
-                    }
-                    onClick={() => setSelectedProgramDayId(day.id)}
-                  >
-                    #{day.order} - {day.name}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+          <Card>
+            <SectionHeader title="Program day" />
+            <SegmentedControl
+              ariaLabel="Program day"
+              value={selectedProgramDayId ?? -1}
+              options={(selectedProgram?.days ?? []).map((day) => ({
+                value: day.id,
+                label: `#${day.order} - ${day.name}`,
+              }))}
+              onChange={(value) => setSelectedProgramDayId(value)}
+            />
+          </Card>
 
-          <section className="rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="mb-2 text-sm text-zinc-400">Metric</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className={
-                  metric === 'e1rm'
-                    ? 'rounded-md border border-zinc-500 bg-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-100'
-                    : 'rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700'
-                }
-                onClick={() => setMetric('e1rm')}
-              >
-                Strength (best e1RM)
-              </button>
-              <button
-                className={
-                  metric === 'volume'
-                    ? 'rounded-md border border-zinc-500 bg-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-100'
-                    : 'rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700'
-                }
-                onClick={() => setMetric('volume')}
-              >
-                Workload (volume)
-              </button>
-            </div>
-          </section>
+          <Card>
+            <SectionHeader title="Metric" />
+            <SegmentedControl
+              ariaLabel="Metric"
+              value={metric}
+              options={[
+                { value: 'e1rm', label: 'Strength (best e1RM)' },
+                { value: 'volume', label: 'Workload (volume)' },
+              ]}
+              onChange={(value) => setMetric(value)}
+            />
+          </Card>
 
-          <section className="rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm text-zinc-400">
-                {metric === 'e1rm' ? 'Best e1RM per completed session' : 'Total volume per completed session'}
-              </div>
-              <div className="text-xs text-zinc-500">
-                EMA alpha: {series?.alpha ?? 0.25}
-              </div>
-            </div>
+          <Card>
+            <SectionHeader
+              title={metric === 'e1rm' ? 'Best e1RM per completed session' : 'Total volume per completed session'}
+              action={<Badge>EMA alpha: {series?.alpha ?? 0.25}</Badge>}
+            />
 
             {seriesLoading ? (
-              <p className="text-sm text-zinc-400">Loading series...</p>
+              <p className="text-sm text-[var(--ui-text-secondary)]">Loading series...</p>
             ) : !series || series.points.length === 0 ? (
-              <p className="text-sm text-zinc-400">No completed sessions for this program day yet.</p>
+              <p className="text-sm text-[var(--ui-text-secondary)]">No completed sessions for this program day yet.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="overflow-x-auto">
                   <svg
                     viewBox={`0 0 ${chart.width} ${chart.height}`}
-                    className="h-[320px] min-w-[720px] w-full rounded-md border border-zinc-700 bg-zinc-900"
+                    className="h-[320px] min-w-[720px] w-full rounded-lg border border-[var(--ui-border)] bg-gradient-to-b from-[var(--ui-card-2)] to-[var(--ui-card)]"
                     role="img"
                     aria-label="Progress trend chart"
+                    onMouseMove={onChartMouseMove}
+                    onMouseLeave={() => setHoveredIndex(null)}
                   >
-                    <rect x="0" y="0" width={chart.width} height={chart.height} fill="#0a0a0a" />
-                    <line
-                      x1={chart.padding}
-                      y1={chart.height - chart.padding}
-                      x2={chart.width - chart.padding}
-                      y2={chart.height - chart.padding}
-                      stroke="#3f3f46"
-                      strokeWidth="1"
-                    />
-                    <line
-                      x1={chart.padding}
-                      y1={chart.padding}
-                      x2={chart.padding}
-                      y2={chart.height - chart.padding}
-                      stroke="#3f3f46"
-                      strokeWidth="1"
-                    />
+                    {Array.from({ length: 4 }).map((_, index) => {
+                      const y = chart.yPadding + (index / 3) * (chart.height - chart.yPadding * 2);
+                      return (
+                        <line
+                          key={`grid-${index}`}
+                          x1={0}
+                          y1={y}
+                          x2={chart.width}
+                          y2={y}
+                          stroke="#a1a1aa1f"
+                          strokeWidth="1"
+                        />
+                      );
+                    })}
 
                     {chart.raw.points.length > 1 && (
                       <polyline
                         fill="none"
                         stroke="#a1a1aa"
-                        strokeWidth="1.5"
+                        strokeWidth="2"
+                        strokeOpacity="0.35"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                         points={pointsToPolyline(chart.raw.points)}
                       />
                     )}
 
                     {chart.ema.points.length > 1 && (
-                      <polyline
-                        fill="none"
-                        stroke="#22c55e"
-                        strokeWidth="3"
-                        points={pointsToPolyline(chart.ema.points)}
-                      />
+                      <>
+                        <polygon
+                          fill="rgba(45,212,191,0.08)"
+                          points={pointsToArea(chart.ema.points, chart.height - chart.yPadding)}
+                        />
+                        <polyline
+                          fill="none"
+                          stroke="#2dd4bf"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          points={pointsToPolyline(chart.ema.points)}
+                        />
+                      </>
                     )}
 
-                    {chart.raw.points.map((point, index) => (
-                      <circle key={`raw-${index}`} cx={point.x} cy={point.y} r="2.6" fill="#d4d4d8" />
-                    ))}
+                    {hoveredPoint && (
+                      <>
+                        <line
+                          x1={hoveredPoint.x}
+                          y1={0}
+                          x2={hoveredPoint.x}
+                          y2={chart.height}
+                          stroke="#a1a1aa44"
+                          strokeWidth="1"
+                          strokeDasharray="4 4"
+                        />
+                        <g>
+                          <rect
+                            x={Math.min(Math.max(hoveredPoint.x + 10, 8), chart.width - 212)}
+                            y={10}
+                            width={204}
+                            height={72}
+                            rx={8}
+                            fill="var(--ui-card-2)"
+                            stroke="var(--ui-border)"
+                          />
+                          <text
+                            x={Math.min(Math.max(hoveredPoint.x + 20, 18), chart.width - 202)}
+                            y={30}
+                            fill="var(--ui-text-secondary)"
+                            fontSize="11"
+                          >
+                            {formatDate(hoveredPoint.point.date)}
+                          </text>
+                          <text
+                            x={Math.min(Math.max(hoveredPoint.x + 20, 18), chart.width - 202)}
+                            y={50}
+                            fill="var(--ui-text-primary)"
+                            fontSize="12"
+                          >
+                            Raw: {formatMetricValue(hoveredPoint.point.value, metric)}
+                          </text>
+                          <text
+                            x={Math.min(Math.max(hoveredPoint.x + 20, 18), chart.width - 202)}
+                            y={68}
+                            fill="var(--ui-text-primary)"
+                            fontSize="12"
+                          >
+                            EMA: {formatMetricValue(hoveredPoint.point.emaValue, metric)}
+                          </text>
+                        </g>
+                      </>
+                    )}
                   </svg>
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-zinc-500">
+                <div className="flex items-center justify-between text-xs text-[var(--ui-text-secondary)]">
                   <span>{formatDate(series.points[0]?.date ?? null)}</span>
                   <span>{formatDate(series.points[series.points.length - 1]?.date ?? null)}</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-sm text-zinc-300 md:grid-cols-4">
-                  <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
-                    <div className="text-xs text-zinc-500">Sessions</div>
-                    <div className="text-base font-semibold">{series.points.length}</div>
-                  </div>
-                  <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
-                    <div className="text-xs text-zinc-500">Latest raw</div>
-                    <div className="text-base font-semibold">
-                      {formatMetricValue(series.points[series.points.length - 1]?.value ?? null, metric)}
-                    </div>
-                  </div>
-                  <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
-                    <div className="text-xs text-zinc-500">Latest EMA</div>
-                    <div className="text-base font-semibold">
-                      {formatMetricValue(series.points[series.points.length - 1]?.emaValue ?? null, metric)}
-                    </div>
-                  </div>
-                  <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3">
-                    <div className="text-xs text-zinc-500">Range</div>
-                    <div className="text-base font-semibold">
-                      {chart.min.toFixed(1)} - {chart.max.toFixed(1)}
-                    </div>
-                  </div>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <StatCard label="Sessions" value={series.points.length} />
+                  <StatCard
+                    label="Latest raw"
+                    value={formatMetricValue(series.points[series.points.length - 1]?.value ?? null, metric)}
+                  />
+                  <StatCard
+                    label="Latest EMA"
+                    value={formatMetricValue(series.points[series.points.length - 1]?.emaValue ?? null, metric)}
+                  />
+                  <StatCard label="Range" value={`${chart.min.toFixed(1)} - ${chart.max.toFixed(1)}`} />
                 </div>
               </div>
             )}
-          </section>
+          </Card>
         </div>
       )}
     </AppShell>
