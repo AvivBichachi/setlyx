@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { buttonClass } from '@/components/ui/button';
 
 type NavItem = {
   href: string;
@@ -19,9 +20,10 @@ function isActive(pathname: string, href: string) {
 }
 
 function itemClass(active: boolean) {
-  return active
-    ? 'rounded-md border border-zinc-600 bg-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-100'
-    : 'rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100';
+  return buttonClass(
+    active ? 'primary' : 'secondary',
+    active ? 'px-3 py-2 text-sm' : 'px-3 py-2 text-sm text-[var(--ui-text-secondary)]',
+  );
 }
 
 export function AppNav() {
@@ -29,8 +31,8 @@ export function AppNav() {
 
   return (
     <>
-      <nav className="sticky top-0 z-40 hidden border-b border-zinc-800 bg-zinc-900/95 backdrop-blur md:block">
-        <div className="mx-auto flex max-w-3xl items-center gap-2 px-6 py-3">
+      <nav className="sticky top-0 z-40 hidden border-b border-[var(--ui-border)] bg-black/40 backdrop-blur md:block">
+        <div className="mx-auto flex max-w-5xl items-center gap-2 px-6 py-3">
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.href}
@@ -43,8 +45,8 @@ export function AppNav() {
         </div>
       </nav>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-900/95 px-4 py-3 backdrop-blur md:hidden">
-        <div className="mx-auto grid max-w-3xl grid-cols-3 gap-2">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--ui-border)] bg-black/40 px-4 py-3 backdrop-blur md:hidden">
+        <div className="mx-auto grid max-w-5xl grid-cols-3 gap-2">
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.href}

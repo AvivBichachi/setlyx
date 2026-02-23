@@ -2,10 +2,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Card } from '@/components/ui/card';
+import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
+import { SectionHeader } from '@/components/ui/section-header';
 import { apiFetch } from '@/lib/api';
 import { clearToken, getToken, setToken } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
-
 
 type Program = { id: number; name: string; type: string; isActive?: boolean };
 
@@ -18,13 +20,11 @@ export default function HomePage() {
 
   const router = useRouter();
 
-
   useEffect(() => {
     const t = getToken();
     setTok(t);
     if (t) router.replace('/home');
   }, []);
-
 
   async function devLogin() {
     setError(null);
@@ -38,7 +38,6 @@ export default function HomePage() {
       setTok(res.accessToken);
 
       router.push('/home');
-
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Login failed');
     }
@@ -69,75 +68,59 @@ export default function HomePage() {
   }, [token]);
 
   return (
-    <main className="min-h-screen bg-zinc-900 text-zinc-100 px-6 py-10">
-      <div className="max-w-3xl mx-auto space-y-8">
-        <h1 className="text-5xl font-extrabold tracking-tight">SETLYX — Dev UI</h1>
+    <main className="min-h-screen px-4 py-8 md:px-6">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl items-center justify-center">
+        <div className="w-full max-w-md space-y-6">
+          <h1 className="text-center text-4xl font-extrabold tracking-tight md:text-5xl">SETLYX</h1>
 
-        {!token ? (
-          <section className="space-y-4">
-            <h2 className="text-xl font-semibold">Dev Login</h2>
+          {!token ? (
+            <Card padding="lg" className="space-y-4">
+              <SectionHeader title="Dev Login" />
 
-            <div className="flex gap-3 items-center">
-              <input
-                className="w-40 rounded-md bg-zinc-800 border border-zinc-700 px-3 py-2 outline-none focus:ring-2 focus:ring-zinc-500"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="userId"
+              <div className="flex items-center gap-3">
+                <input
+                  className="w-40 rounded-md border border-[var(--ui-border)] bg-zinc-900 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  placeholder="userId"
+                />
+                <PrimaryButton onClick={devLogin}>Login</PrimaryButton>
+              </div>
+
+              {error && <p className="text-sm text-red-400">{error}</p>}
+            </Card>
+          ) : (
+            <Card padding="lg" className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <SecondaryButton onClick={logout}>Logout</SecondaryButton>
+                <PrimaryButton onClick={() => router.push('/programs')}>Go to Start/Resume</PrimaryButton>
+              </div>
+
+              <SectionHeader
+                title="Programs"
+                action={
+                  <SecondaryButton onClick={loadPrograms} disabled={loadingPrograms}>
+                    {loadingPrograms ? 'Loading...' : 'Refresh'}
+                  </SecondaryButton>
+                }
               />
-              <button
-                className="rounded-md bg-zinc-100 text-zinc-900 px-4 py-2 font-semibold hover:bg-white"
-                onClick={devLogin}
-              >
-                Login
-              </button>
-            </div>
 
-            {error && <p className="text-red-400 text-sm">{error}</p>}
-          </section>
-        ) : (
-          <section className="space-y-4">
-            <button
-              className="rounded-md bg-zinc-800 border border-zinc-700 px-4 py-2 hover:bg-zinc-700"
-              onClick={logout}
-            >
-              Logout
-            </button>
+              {error && <p className="text-sm text-red-400">{error}</p>}
 
-            <button
-              className="rounded-md bg-zinc-100 text-zinc-900 px-4 py-2 font-semibold hover:bg-white"
-              onClick={() => router.push('/programs')}
-            >
-              Go to Start/Resume
-            </button>
-
-
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Programs</h2>
-              <button
-                className="rounded-md bg-zinc-100 text-zinc-900 px-4 py-2 font-semibold hover:bg-white disabled:opacity-50"
-                onClick={loadPrograms}
-                disabled={loadingPrograms}
-              >
-                {loadingPrograms ? 'Loading...' : 'Refresh'}
-              </button>
-            </div>
-
-            {error && <p className="text-red-400 text-sm">{error}</p>}
-
-            <ul className="space-y-2">
-              {programs.map((p) => (
-                <li key={p.id} className="rounded-md bg-zinc-800 border border-zinc-700 p-3">
-                  <span className="font-semibold">#{p.id}</span> — {p.name} ({p.type})
-                </li>
-              ))}
-              {programs.length === 0 && (
-                <li className="text-zinc-400 text-sm">No programs found.</li>
-              )}
-            </ul>
-          </section>
-        )}
+              <ul className="space-y-2">
+                {programs.map((p) => (
+                  <li key={p.id} className="rounded-md border border-[var(--ui-border)] bg-zinc-900 p-3">
+                    <span className="font-semibold">#{p.id}</span> - {p.name} ({p.type})
+                  </li>
+                ))}
+                {programs.length === 0 && (
+                  <li className="text-sm text-[var(--ui-text-secondary)]">No programs found.</li>
+                )}
+              </ul>
+            </Card>
+          )}
+        </div>
       </div>
     </main>
   );
 }
-

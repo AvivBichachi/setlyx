@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { AppShell } from '@/components/app-shell';
+import { Badge } from '@/components/ui/badge';
+import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/ui/section-header';
+import { StatCard } from '@/components/ui/stat-card';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { AppShell } from '@/components/app-shell';
 
 type SessionDetails = {
   id: number;
@@ -108,37 +113,29 @@ export default function SessionPage() {
       title={`Workout Session #${sessionId}`}
       actions={
         <>
-          <button
-            onClick={load}
-            className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 hover:bg-zinc-700"
-          >
-            Refresh
-          </button>
-          <button
-            onClick={finish}
-            className="rounded-md bg-zinc-100 px-4 py-2 font-semibold text-zinc-900 hover:bg-white"
-          >
-            Finish
-          </button>
+          <SecondaryButton onClick={load}>Refresh</SecondaryButton>
+          <PrimaryButton onClick={finish}>Finish</PrimaryButton>
         </>
       }
     >
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <Card className="border-red-500/40 bg-red-500/10 text-sm text-red-300">{error}</Card>}
 
       {!details ? (
-        <p>Loading...</p>
+        <Card className="text-sm text-[var(--ui-text-secondary)]">Loading...</Card>
       ) : (
-        <div className="space-y-4">
-          <div className="rounded-md border border-zinc-700 bg-zinc-800 p-4">
-            <div className="font-semibold">{details.program.name}</div>
-            <div className="text-sm text-zinc-300">
-              {details.programDay.name} (Day {details.programDay.order})
+        <div className="space-y-6">
+          <Card padding="lg" className="space-y-4">
+            <SectionHeader title={details.program.name} action={<Badge>{details.program.type}</Badge>} />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <StatCard label="Program Day" value={`${details.programDay.name} (#${details.programDay.order})`} />
+              <StatCard label="Status" value={details.endedAt ? 'Finished' : 'Active'} />
+              <StatCard label="Exercises" value={details.exercises.length} />
             </div>
-            <div className="mt-1 text-xs text-zinc-400">
+            <div className="text-xs text-[var(--ui-text-secondary)]">
               Started: {new Date(details.startedAt).toLocaleString()}
               {details.endedAt ? ` | Ended: ${new Date(details.endedAt).toLocaleString()}` : ''}
             </div>
-          </div>
+          </Card>
 
           {details.exercises.map((block) => {
             const de = block.dayExercise;
@@ -146,41 +143,35 @@ export default function SessionPage() {
             const busy = busyKey === `add-${de.id}`;
 
             return (
-              <div
-                key={de.id}
-                className="space-y-3 rounded-md border border-zinc-700 bg-zinc-800 p-4"
-              >
-                <div className="flex items-baseline justify-between">
-                  <div className="font-semibold">
-                    {de.order}. {de.exercise.name}
-                  </div>
-                  <div className="text-sm text-zinc-400">
-                    Target: {de.targetSets} sets | {de.minReps}-{de.maxReps} reps
-                  </div>
-                </div>
+              <Card key={de.id} className="space-y-4">
+                <SectionHeader
+                  title={`${de.order}. ${de.exercise.name}`}
+                  subtitle={performed.length === 0 ? 'No sets yet' : `${performed.length} set${performed.length > 1 ? 's' : ''} completed`}
+                  action={<Badge>{`Target ${de.targetSets} | ${de.minReps}-${de.maxReps} reps`}</Badge>}
+                />
 
-                <div className="space-y-1 text-sm">
+                <div className="space-y-1 rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] p-3 text-sm">
                   {performed.length === 0 ? (
-                    <div className="text-zinc-400">No sets yet</div>
+                    <div className="text-[var(--ui-text-secondary)]">No sets yet</div>
                   ) : (
                     performed.map((s) => (
                       <div key={`${de.id}-${s.setNumber}`} className="flex gap-3">
-                        <span className="w-14 text-zinc-400">Set {s.setNumber}</span>
+                        <span className="w-14 text-[var(--ui-text-secondary)]">Set {s.setNumber}</span>
                         <span>{s.reps} reps</span>
-                        <span className="text-zinc-400">x</span>
+                        <span className="text-[var(--ui-text-secondary)]">x</span>
                         <span>{s.weight} kg</span>
                       </div>
                     ))
                   )}
                 </div>
 
-                <div className="flex items-end gap-2">
+                <div className="grid gap-3 md:grid-cols-[120px,160px,auto] md:items-end">
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-400">Reps</span>
+                    <span className="text-xs text-[var(--ui-text-secondary)]">Reps</span>
                     <input
                       type="number"
                       min={1}
-                      className="w-24 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                      className="w-full rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] px-3 py-2 outline-none"
                       value={repsBy[de.id] ?? 8}
                       onChange={(e) =>
                         setRepsBy((prev) => ({ ...prev, [de.id]: Number(e.target.value) }))
@@ -189,12 +180,12 @@ export default function SessionPage() {
                   </label>
 
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-400">Weight (kg)</span>
+                    <span className="text-xs text-[var(--ui-text-secondary)]">Weight (kg)</span>
                     <input
                       type="number"
                       min={0}
                       step={0.5}
-                      className="w-32 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none"
+                      className="w-full rounded-md border border-[var(--ui-border)] bg-[var(--ui-card-2)] px-3 py-2 outline-none"
                       value={weightBy[de.id] ?? 0}
                       onChange={(e) =>
                         setWeightBy((prev) => ({ ...prev, [de.id]: Number(e.target.value) }))
@@ -202,19 +193,19 @@ export default function SessionPage() {
                     />
                   </label>
 
-                  <button
+                  <PrimaryButton
                     disabled={busy || details.endedAt !== null}
                     onClick={() => addSet(de.id, performed.length)}
-                    className="rounded-md bg-zinc-100 px-4 py-2 font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
+                    className="w-full md:w-auto"
                   >
                     {details.endedAt
                       ? 'Session finished'
                       : busy
                         ? 'Adding...'
                         : `Add set ${performed.length + 1}`}
-                  </button>
+                  </PrimaryButton>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -222,4 +213,3 @@ export default function SessionPage() {
     </AppShell>
   );
 }
-
